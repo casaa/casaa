@@ -1,0 +1,100 @@
+<?php
+
+function google_plugin_global_settings_form() {
+	$form['google_plugin_settings'] = array(
+		'#type' => 'fieldset',
+		'#title' => t('Google Plugin Global Settings'),
+	);
+	
+		$form['google_plugin_settings']['google_plugin_enabled'] = array(
+			'#type' => 'checkbox',
+			'#title' => t('Enabled'),
+			'#default_value' => variable_get('google_plugin_enabled', 0),
+		);
+		$form['google_plugin_settings']['google_plugin_has_defaults'] = array(
+			'#type' => 'checkbox',
+			'#title' => t('Allow Defaults?'),
+			'#description' => t('Allow the plugin to always output using default values in absence of a mapping setting.'),
+			'#default_value' => variable_get('google_plugin_has_defaults', 0),
+		);
+		$form['google_plugin_settings']['google_plugin_script_position'] = array(
+			'#type' => 'radios',
+			'#title' => t('Google Script Postion'),
+			'#description' => t('Here you may choose where the GA script appears in the document i.e. header or footer. (Footer position is highly reccomended)'),
+			'#options' => array('header' => t('Header'), 'footer' => t('Footer')),
+			'#default_value' => variable_get('google_plugin_script_position', 'footer'),
+		);
+		$form['google_plugin_settings']['google_plugin_account_number'] = array(
+			'#type' => 'textfield',
+			'#title' => t('Google Analytics Account Number'),
+			'#default_value' => variable_get('google_plugin_account_number', ''),
+		);
+		
+	return $form;
+}
+
+function google_plugin_mapping_settings_form($default_values = NULL) {
+	$form = array();
+	
+	$default_values = unserialize($default_values);
+	$form['google_plugin'] = array(
+		'#type'  => 'fieldset',
+		'#title' => t('Google Plugin Settings'),
+	);
+		$form['google_plugin']['google_plugin_alternate_account'] = array(
+			'#type' => 'textfield',
+			'#title' => t('Alternate Account #'),
+			'#description' => t('You override the main GA account for your site with an alternate account if you want.'),
+			'#default_value' => $default_values['google_plugin_alternate'],
+		);
+		
+	return $form;
+}
+
+/**
+* Implemtation of hook_mapping_settings_submit_handler()
+* @return $adjusted_value a serialize array of plugin specific values
+*/
+function google_plugin_mapping_settings_submit_handler($form_values) {
+	$adjusted_value = serialize(array('google_plugin_alternate' => $form_values['google_plugin_alternate_account']));
+	return $adjusted_value;	
+}
+
+function google_plugin_table_display_data($my_values) {
+	$my_values = unserialize($my_values);
+	if ($my_values['google_plugin_alternate']) {
+		$my_display = $my_values['google_plugin_alternate'];
+	}
+	else {
+		$my_display = variable_get('google_plugin_account_number', '');
+	}
+
+	return $my_display;
+}
+
+
+function google_plugin_output($script_values) {
+	global $script_written;
+	$script_values = unserialize($script_values);
+	$account = $script_values['google_plugin_alternate'];
+	if (!$account) {
+		$account = variable_get('google_plugin_account_number', '');
+	}
+	
+	if (!$script_written['google_plugin']) {
+		$output = "
+			<script type=\"text/javascript\">
+			var gaJsHost = ((\"https:\" == document.location.protocol) ? \"https://ssl.\" : \"http://www.\");
+			document.write(unescape(\"%3Cscript src='\" + gaJsHost + \"google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E\"));
+			</script>
+			<script type=\"text/javascript\">
+			try {
+			var pageTracker = _gat._getTracker(" . $account . ");
+			pageTracker._trackPageview();
+			} catch(err) {}</script>
+		";
+		
+		drupal_add_js($output, 'inline', variable_get('google_plugin_script_position', 'footer'), FALSE, TRUE);
+		$script_written['google_plugin'] = TRUE;
+	}
+}

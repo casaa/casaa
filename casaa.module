@@ -1,0 +1,459 @@
+<?php
+/********************************************
+ * Context Ad Serving and Analytics
+ * Version: 6.x-1.0.0
+ * Author: Geoff Maxey (cntlscrut)
+ * 
+ * A pluggable system that handles mapping and tagging of a site
+ * to serve data for various ad-serving and analytics systems
+ *********************************************/
+
+########################################
+# Permissions and Menu Functions       #
+########################################
+
+/**
+ * implementation of hook_perm
+ **/
+
+function casaa_perm() {
+	return array('administer casaa module');
+}
+
+/**
+ * implementation of hook_menu()
+ **/
+
+function casaa_menu() {
+	$items = array();
+	
+	$items['admin/build/casaa'] = array(
+		'title' => t('CASAA Settings'),
+		'description' => t('Administer the CASAA module and installed plugins'),
+		'position' => 'left',
+		'page callback' => 'casaa_global_settings_page',
+		'access arguments' => array('administer casaa module'),
+		'file' => 'casaa.global.inc',
+	);
+		$items['admin/build/casaa/global_settings'] = array(
+			'title' => t('Global Settings'),
+			'type' => MENU_DEFAULT_LOCAL_TASK,
+			'weight' => -10,
+		);
+		$items['admin/build/casaa/mapping_settings'] = array(
+			'title' => t('Mapping Settings'),
+			'page callback' => 'casaa_mapping_settings_page',
+			'access arguments' => array('administer casaa module'),
+			'type' => MENU_LOCAL_TASK,
+			'weight' => -9,
+			'file' => 'casaa.mapping.inc',
+		);
+		$items['admin/build/casaa/filter'] = array(
+			'title' => t('Mapping Search'),
+			'page callback' => 'casaa_filter_page',
+			'access arguments' => array('administer casaa module'),
+			'type' => MENU_LOCAL_TASK,
+			'weight' => -8,
+			'file' => 'casaa.filter.inc',
+		);
+		$items['admin/build/casaa/add_setting'] = array(
+			'title' => t('Add Setting'),
+			'page callback' => 'casaa_add_mapping_page',
+			'access arguments' => array('administer casaa module'),
+			'type' => MENU_LOCAL_TASK,
+			'weight' => -7,
+			'file' => 'casaa.add.inc',
+		);
+		$items['admin/build/casaa/expanded_view'] = array(
+			'page callback' => 'casaa_expanded_view_page',
+			'access arguments' => array('administer casaa module'),
+			'type' => MENU_CALLBACK,
+		);
+		$items['admin/casaa/edit'] = array(
+			'page callback' => 'casaa_edit_mapping_setting',
+			'access arguments' => array('administer casaa module'),
+			'type' => MENU_CALLBACK,
+			'file' => 'casaa.mapping.inc',
+		);
+		$items['admin/casaa/delete'] = array(
+			'page callback' => 'casaa_delete_mapping_setting',
+			'page arguments' => array(3, 4),
+			'access arguments' => array('administer casaa module'),
+			'type' => MENU_CALLBACK,
+			'file' => 'casaa.mapping.inc',
+		);
+		
+		//now for the js callbacks for the AHAH functionality of the add settings page.
+		//js callback for choosing existing or adding types
+		$items['casaa/type/js'] = array(
+			'page callback' => 'casaa_add_generate_form_js',
+			'access arguments' => array('administer casaa module'),
+			'type' => MENU_CALLBACK,
+			'file' => 'casaa.add.inc',
+		);
+		
+		//js callback for switching vocabularies
+		$items['casaa/vocab/js'] = array(
+			'page callback' => 'casaa_add_change_vocab_js',
+			'access arguments' => array('administer casaa module'),
+			'type' => MENU_CALLBACK,
+			'file' => 'casaa.add.inc',
+		); 
+	
+	return $items;
+}
+
+########################################################
+# Page and Forms Functions                             #
+########################################################
+
+/**
+ * Provide an expanded view of settings similar to the main
+ * main mapping settings page but, provide more result rows
+ * per page.
+ * 
+ * @param $type - an argument taken from the url using drupal's arg() function.
+ * 
+ * @return $output - a string containing themed or raw html. 
+ **/
+function casaa_expanded_view_page() {
+	$type = arg(4);
+	require_once('casaa.mapping.inc');
+	switch ($type) {
+		case 'path':
+				$output = 'Path View';
+				$path_header = casaa_path_get_plugin_header_info();
+				$path_settings_rows = casaa_get_mapping_settings('path', TRUE);
+				$path_settings_rows[] = array(
+					'data' => array(
+						array('data' => theme_pager(array(), $limit = 25, $element = 0, array(), $quantity = 9), 'class' => pager, 'colspan' => 7)
+					)
+				);
+				$output .= theme_table($path_header, $path_settings_rows);
+				$output .= '<br>' . l(t('Return To The Main Page'), 'admin/build/casaa/mapping_settings');
+			break;
+		case 'term':
+				$output = 'Term View';
+				$tax_header = casaa_term_get_plugin_header_info();
+
+				$tax_settings_rows = casaa_get_mapping_settings('tax', TRUE);
+				$tax_settings_rows[] = array(
+					'data' => array(
+						array('data' => theme_pager(array(), $limit = 25, $element = 0, array(), $quantity = 9), 'class' => pager, 'colspan' => 7)
+					)
+				);
+				$output .= theme_table($tax_header, $tax_settings_rows);
+				$output .= '<br>' . l(t('Return To The Main Page'), 'admin/build/casaa/mapping_settings');
+			break;
+	}
+	return $output;
+}
+
+
+
+#################################################
+# Core Output Functions                         #
+#################################################
+
+/**
+ * Implementation of hook_init()
+* @global $exception_found flag to indicate that an exception was found.
+* @global $script_written flag to prevent script from being included more than once per page load.
+*
+* @param $tokens a list of currently installed plugins
+* @param $script_values the values from the exceptions settings for each plugin (if it has any)
+*
+* On page load check each plugin to see if it has any exception values that override any tax term mappings
+* If so, set the exception flag to stop processing for that plugin and execute the plugin's output hook
+* function.
+*
+*/
+function casaa_init() {
+	global $exception_found;
+	global $script_written;
+	
+	$script_values = '';
+	if (variable_get("clean_url", 0) == 0) {
+		$uri = $_GET['q'];
+	}
+	else if (strpos($_SERVER['REQUEST_URI'], '?') !== FALSE) {
+		$parts = explode('?', $_SERVER['REQUEST_URI']);
+		$uri = $parts[0];
+	}
+	else {
+		$uri = $_SERVER['REQUEST_URI'];
+	}
+	$tokens = casaa_get_plugin_tokens_with_values(TRUE);
+	
+	if (!is_array($tokens)) {
+		$tokens = casaa_get_plugin_tokens(TRUE);
+	}
+	if ($tokens) {
+		foreach ($tokens as $token) {
+			if ($uri == '/') {	
+				//note the extra char at the beginning.
+				// this is to keep the substr value from lopping off the 
+				// start of our token.
+				$uri = '[[front]';
+			}
+			$script_values = casaa_check_paths($uri, $token);
+			if ($script_values) {
+				$hook_output = $token . '_output';
+				if (function_exists($hook_output)) {
+					$hook_output($script_values);
+					$script_written[$token] = TRUE;
+				}
+			}
+		}
+	}	
+}
+
+
+/**
+ * For paths we do a two part check. First we query for an exact match of the URI
+ * if we don't get a match we then pull a list of paths that contain the 
+ * wildcard '*' symbol and compare them to the URI.
+ **/
+function casaa_check_paths($path, $token) {
+
+	//test for 404. we also want to avoid overriding any actual mapped paths.
+	if ($path !== "[[front]") {	
+		$not_found_test = drupal_get_normal_path(substr($path, 1));
+		$path_query = db_query("SELECT casaa_path FROM {casaa_paths}");
+		while ($test = db_fetch_object($path_query)) {
+		  if (strstr(substr($path, 1), str_replace('*', '',str_replace('/*', '', $test->casaa_path)))) {
+		    $tmp_path=$path;
+		    break;
+		  }
+		  else if ($path == '/' . $not_found_test && !strstr(substr($path, 1), str_replace('*', '',str_replace('/*', '', $test->casaa_path)))) {
+		   //added an extra char at the beginning because of the substr in the query below.
+		   $tmp_path = "[[404]";
+		  }
+		}
+		if ($tmp_path !== $path) {
+		  $path = $tmp_path;
+		}
+	}
+		
+	//check for any paths that are an exact match
+	$query = db_query("SELECT c.casaa_value FROM {casaa_context_mapper} c JOIN {casaa_paths} p ON c.aid = p.aid WHERE c.casaa_type='%s' AND (p.casaa_path='%s' OR p.casaa_path='%s' )", $token, substr($path, 1), substr($path, 1) . '/*');
+	$result = db_fetch_object($query);
+	$wild_enabled = variable_get('casaa_wildcard', 0);
+	if ($result->casaa_value) {
+		return $result->casaa_value;
+	}
+	else if ($wild_enabled) {
+		$query = db_query("SELECT casaa_path FROM	{casaa_paths} WHERE casaa_path LIKE '%*'");
+		while ($result = db_fetch_object($query)) {
+			$beginning_path = str_replace('*', '', $result->casaa_path);
+			if (strstr(substr($path, 1), $beginning_path)) {
+				$query = db_query("SELECT c.casaa_value FROM {casaa_context_mapper} c JOIN {casaa_paths} p ON c.aid = p.aid WHERE p.casaa_path='%s' AND c.casaa_type='%s'", $result->casaa_path, $token);
+				$value = db_fetch_object($query);
+				if ($value->casaa_value) {
+					return $value->casaa_value;
+				}
+			}
+		}
+	}
+}
+
+/**
+* Implementation of hook_nodeapi()
+* @global $script_written flag to prevent script from being included more than once per page load.
+* @global $exception_found flag to indicate if an exception had been found.
+*
+* @param $tokens a list of the currently installed plugins.
+*	@param $script_values the values from each plugin's settings for a prticular tax term.
+*
+* if an exception has not been found find if any of the plugins have any mapping settings for the 
+* for the current node's taxonomy term. if so, call the plugin's output function and pass it the
+* values.
+*
+* @todo add in the support for wildcard settings.
+*/
+function casaa_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+	$tokens = casaa_get_plugin_tokens_with_values(TRUE);
+	switch ($op) {
+		case 'load':
+			break; 
+		case 'view':
+		 	global $exception_found;
+			global $script_written;
+				foreach ($tokens as $token) {
+					if (!$exception_found[$token]) {
+						$results = array();	
+						foreach((array)$node->taxonomy as $nid => $tid){
+							$query = db_query("SELECT c.casaa_value, c.casaa_weight FROM {casaa_context_mapper} c JOIN {casaa_terms} t ON c.aid = t.aid WHERE c.casaa_type='%s' AND t.casaa_tid='%s'", $token, $tid->tid);
+							$result = db_fetch_object($query);
+							$results[] = $result;				
+						}
+						//test the weights and determine who's the dominant term in the group.
+						if (!$results[0]) {
+							$base_value = $results[1];
+						}
+						else {
+							$base_value = $results[0];
+						}
+						if ($results) {
+							foreach ($results as $result) {
+								if ($result->casaa_weight < $base_weight->casaa_weight) {
+									$script_value = $result->casaa_value;
+								}
+								else{
+									$script_value = $base_value->casaa_value;
+								}
+							}
+						}
+						$hook_output = $token . '_output';
+						if (function_exists($hook_output) && !$script_written[$token]) {
+							$hook_output($script_value);
+						}
+					}
+				}
+
+			break;			
+	}
+}
+
+function casaa_footer()
+{
+	// check to ensure that any plugin which can generate decent output without mapping has been called
+	$tokens = casaa_get_plugin_tokens(TRUE);
+	foreach ($tokens as $token)
+	{
+		$hook_output = $token . '_output';
+		if (variable_get($token . '_has_defaults', FALSE) && !$script_written[$token] && function_exists($hook_output))
+		{
+			$hook_output(null);
+		}
+	}
+}
+
+
+##############################
+# Utility Functions          #
+##############################
+/**
+ * Search the plugins directory and return the currently installed plugins.
+ * 
+ * @return $tokens - an array of currently installed plugins.
+ **/
+function casaa_get_plugin_tokens($enabled_only = FALSE) {
+	$tokens = array();
+	$dir = drupal_get_path('module', 'casaa') . '/plugins';
+	if ($handle = opendir($dir)) {
+		while ($token = readdir($handle)) {
+			if ($token !== '.' && $token !== '..' && $token !== '.DS_Store') {
+				if (!$enabled_only || casaa_is_plugin_enabled($token)) {
+					$tokens[] = $token;
+				}
+			}
+		}
+	}else {
+		drupal_set_message('No Plugins Currently Installed...');
+	}
+	closedir($handle);
+	return $tokens;
+}
+
+/**
+ * Query the db for a list of current plugin tokens that have been given
+ * values.
+ * 
+ * @return - an array containing names of plugin tokens that have values (have been mapped). 
+ **/
+function casaa_get_plugin_tokens_with_values($enabled_only = FALSE) {
+  static $enabled_tokens = NULL;
+  static $all_tokens = NULL;
+  $tokens = NULL;
+
+  if ($enabled_only) {
+    $tokens = $enabled_tokens;
+  }
+  else {
+    $tokens = $all_tokens;
+  }
+  
+  if (!$tokens) {
+    $query = db_query("SELECT DISTINCT casaa_type FROM {casaa_context_mapper}");
+    
+    while ($token = db_fetch_object($query)) {
+      if (!$enabled_only || casaa_is_plugin_enabled($token->casaa_type)) {
+          $tokens[] = $token->casaa_type;
+      }
+    }
+  }
+  
+  if ($enabled_only) {
+    $enabled_tokens = $tokens;
+  }
+  else {
+    $all_tokens = $tokens;
+  }
+
+  return $tokens;
+}
+
+/**
+ * returns true if a given plugin is enabled
+ *
+ * plugins can be permanently enabled/disabled by the variable ${PLUGIN_NAME}_enabled
+ * 
+ * this can be overridden on the url by specifying casaa_enable=plugin,plugin,plugin and 
+ * casaa_disable=plugin,plugin,plugin
+ * 
+ * casaa_enabled trumps casaa_disabled
+ */
+function casaa_is_plugin_enabled($plugin) {
+	$enabled = explode(",", $_REQUEST['casaa_enable']);
+	$disabled = explode(",", $_REQUEST['casaa_disable']);
+	if (array_search($plugin, $enabled) !== FALSE) {
+		return TRUE;
+	} 
+	else if (array_search($plugin, $disabled) !== FALSE) {
+		return FALSE;
+	}
+	else {
+		return variable_get($plugin . '_enabled', FALSE);
+	}
+}
+
+/**
+ * Remove the leading slash from an incoming url path 
+ **/
+function casaa_remove_leading_slash($path) {
+	//replace the leading slash of the path value if it exists
+	if (substr($path, 0, 1) == '/') {
+		$path = substr_replace($path, '', 0, 1);
+	}
+	return $path;
+}
+
+/**
+ * casaa_update_db
+ * update all values in the casaa_paths tables by removing the leading slash from all paths,
+ * replace the old "/front" token w/ the [front] token.
+ **/
+function casaa_update_db() {
+	$updated = FALSE;
+	$successful = 0;
+	$failed = 0;
+	$query = db_query("SELECT * FROM {casaa_paths}");
+	while ($path = db_fetch_object($query)) {
+		if ($path->casaa_path !== '/front') {
+			$new_path = casaa_remove_leading_slash($path->casaa_path);
+			if (db_query("UPDATE {casaa_paths} SET casaa_path='%s' WHERE aid=%d", $new_path, $path->aid)) {
+				$successful++;
+			}
+			else {
+				$failed++;
+			}
+		}
+	}
+	if ($failed == 0 && $successful > 0) {
+		$updated = TRUE;
+	}
+	
+	return $updated;
+}
+

@@ -1,0 +1,383 @@
+<?php
+/********************************
+* Omniture plugin for Ad/Analytics Framework
+* version: 6.x-1.2.5
+* Author: Roger Soper and Geoff Maxey
+*
+* Interacts with the CMF to output Omniture tagging
+*
+*********************************/
+
+/**
+* Implementation of hook_global_settings_form
+*
+* - the form_alter has been removed
+*/
+function omniture_plugin_global_settings_form() {
+	$form = array();
+	
+	$form['omniture_plugin_settings'] = array(
+		'#type' => 'fieldset',
+		'#title' => t('Omniture Plugin Global Settings'),
+	);
+	$form['omniture_plugin_settings']['omniture_plugin_enabled'] = array(
+		'#type' => 'checkbox',
+		'#title' => t('Enabled'),
+		'#default_value' => variable_get('omniture_plugin_enabled', 0),
+	);
+	$form['omniture_plugin_settings']['omniture_plugin_has_defaults'] = array(
+		'#type' => 'checkbox',
+		'#title' => t('Allow Defaults?'),
+		'#description' => t('Allow the plug-in to always output with default values in absense of mapping settings.'),
+		'#default_value' => variable_get('omniture_plugin_has_defaults', 0),
+	);
+	$form['omniture_plugin_settings']['omniture_plugin_script_position'] = array(
+		'#type' => 'radios',
+		'#title' => t('Script Position'),
+		'#description' => t('Here you may choose where the script appears in the document i.e. header or footer.'),
+		'#options' => array('header' => t('Header'), 'footer' => t('Footer')),
+		'#default_value' => variable_get('omniture_plugin_script_position', 'footer'),
+	);
+	$form['omniture_plugin_settings']['omniture_plugin_account'] = array(
+		'#type' => 'textfield',
+		'#title' => t('S Account'),
+		'#description' => t('The S account for your property. (ex mdtopeka)'),
+		'#default_value' => variable_get('omniture_plugin_account', ''),
+	);
+	$form['omniture_plugin_settings']['omniture_plugin_region'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Region'),
+		'#default_value' => variable_get('omniture_plugin_region', ''),
+		//'#options' => omniture_plugin_region_options(),
+		'#description' => t('The region for the site... for example the state initials'),
+	);
+	$form['omniture_plugin_settings']['omniture_plugin_group'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Group'),
+		'#default_value' => variable_get('omniture_plugin_group', ''),
+		//'#options' => omniture_plugin_group_options(),
+		'#description' => t('The group for the site... for example Metro'),
+	);
+	$form['omniture_plugin_settings']['omniture_plugin_property'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Property Name'),
+		'#description' => t('The name of your property that will be sent to omniture. (The value used with s.server and s.channel)'),
+		'#default_value' => variable_get('omniture_plugin_property', ''),
+	);
+	$form['omniture_plugin_settings']['omniture_plugin_server'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Omniture Server Domain'),
+		'#description' => t('The URL that is serving the data to omniture.'),
+		'#default_value' => variable_get('omniture_plugin_server', ''),
+	);
+	$form['omniture_plugin_settings']['omniture_plugin_def_category'] = array(
+		'#type' => 'select',
+		'#title' => t('Default Category'),
+		'#description' => t('This is your default s.prop17 variable.'),
+		'#default_value' => variable_get('omniture_plugin_def_category', ''),
+		'#options' => omniture_plugin_category_options(),
+	);
+	$form['omniture_plugin_settings']['omniture_plugin_def_sub_category'] = array(
+		'#type' => 'select',
+		'#title' => t('Default Sub Category'),
+		'#description' => t('This is your default s.prop18 variable.'),
+		'#default_value' => variable_get('omniture_plugin_def_sub_category', ''),
+		'#options' => omniture_plugin_sub_category_options(),
+	);
+	
+	return $form;
+}
+
+/**
+* Implementation of hook_mapping_settings_form
+*
+* @changed: added weight to mapping terms :)
+*/
+function omniture_plugin_mapping_settings_form($default_values = NULL) {
+	$form = array();
+	$default_values = unserialize($default_values);
+	$form['omniture_plugin_mapping_settings'] = array(
+		'#type'  => 'fieldset',
+		'#title' => t('Omniture Plugin Settings'),
+	);
+	$form['omniture_plugin_mapping_settings']['omniture_plugin_category'] = array(
+		'#type' => 'select',
+		'#title' => t('Category'),
+		'#description' => t('This is your s.prop17 variable.'),
+		'#default_value' => $default_values['omniture_plugin_category'],
+		'#options' => omniture_plugin_category_options(),
+	);
+	$form['omniture_plugin_mapping_settings']['omniture_plugin_sub_category'] = array(
+		'#type' => 'select',
+		'#title' => t('Sub Category'),
+		'#description' => t('This is your s.prop18 variable.'),
+		'#default_value' => $default_values['omniture_plugin_sub_category'],
+		'#options' => omniture_plugin_sub_category_options(),
+	);
+
+	return $form;
+}
+
+
+/**
+* Implemtation of hook_mapping_settings_submit_handler()
+* @return $adjusted_value a serialize array of plugin specific values
+*/
+function omniture_plugin_mapping_settings_submit_handler($form_values) {
+	$adjusted_value = '';
+	$adjusted_value = serialize(
+		array(
+			'omniture_plugin_category' => $form_values['omniture_plugin_category'],
+			'omniture_plugin_sub_category' => $form_values['omniture_plugin_sub_category'],
+		)
+	);
+	return $adjusted_value;	
+}
+
+/**
+ *  
+ **/
+function omniture_plugin_table_display_data($my_values) {
+	$value = unserialize($my_values);
+		
+	return $value['omniture_plugin_category'] . '  |  ' . $value['omniture_plugin_sub_category'];
+}
+
+
+/**
+* implementation of the cmf_hook_output()
+* @todo adjust for proper data being passed instead of this crazy string handling
+*/
+
+function omniture_plugin_output($script_values) {
+	global $script_written;
+	
+	global $user;
+	$profile_gender = $user->profile_gender;
+	$profile_zip = $user->profile_zip;
+	$profile_birthyear = $user->profile_birthyear;
+	$profile_name = $user->name;
+
+	$script_values = unserialize($script_values);	
+	$omniture_category = $script_values['omniture_plugin_category'];
+	$omniture_sub_category = $script_values['omniture_plugin_sub_category'];
+
+	if(!$omniture_category){
+	$omniture_category = variable_get('omniture_plugin_def_category', '');
+	}
+	if(!$omniture_sub_category){
+	$omniture_sub_category = variable_get('omniture_plugin_def_sub_category', '');
+	}
+
+	if (!$script_written['omniture_plugin']) {
+		$account_output = "var omni_account = \"" . variable_get('omniture_plugin_account', '') . "\"";
+
+		drupal_add_js($account_output, 'inline', 'header', FALSE, TRUE);
+		
+		$output = "
+
+		<!--
+		/* You may give each page an identifying name, server, and channel on
+		the next lines. */
+
+		url_arr = new String (window.location.hostname + window.location.pathname).split('www\.');
+		s.pageName = '" . variable_get('omniture_plugin_server','') . "' + location.pathname;
+		s.server = '" . variable_get('omniture_plugin_property','') . " - " . variable_get('omniture_plugin_server','') . "';
+		s.channel='News'
+		s.pageType= '" . variable_get('omniture_plugin_server','') . "' + location.pathname;
+		lparr = location.pathname.split('/');
+		toppath = lparr[1];
+		nxtpath = (lparr.length > 2)?lparr[2]:'Frontpage';
+		s.channel = '" . variable_get('omniture_plugin_property', '') . " - ';
+		s.channel += (toppath != '')?toppath:'Frontpage';
+		s.prop1 = (toppath == '')?'Frontpage':(toppath + ' - ' + ((nxtpath != '')?nxtpath:'Frontpage'));
+		s.prop2 = document.title;
+		s.prop3=''
+		s.prop4=''
+		s.prop5=''
+		s.prop6=''
+		s.prop7=''
+		s.prop8=''
+		s.prop9=''
+		s.prop10=''
+		// s.prop 11 - 20 dedicated for MDW Corporate
+		s.prop11='$profile_gender' // Gender
+		s.prop12='$profile_zip' // Zip Code
+		s.prop13='$profile_birthyear'   // Birth Year
+		s.prop14='$profile_name'   // Subscriber
+		s.prop15='" . variable_get('omniture_plugin_region', '') . "'    // MDW_Region
+		s.prop16='" . variable_get('omniture_plugin_group', '') . "'   //  MDW_Group
+		s.prop17='$omniture_category'     //  MDW_Cat
+		s.prop18='$omniture_sub_category'        // MDW_Sub_Cat
+		s.prop19=''
+		s.prop20=''
+
+		/********* INSERT THE DOMAIN AND PATH TO YOUR CODE BELOW ************/
+
+		var s_code=s.t();if(s_code)document.write(s_code)
+
+		//-->
+
+		";
+		drupal_add_js( drupal_get_path('module', 'omniture_plugin') . '/s_code_remote.js', 'module', variable_get('omniture_plugin_script_position', 'footer'), FALSE, TRUE);
+		drupal_add_js($output, 'inline', variable_get('omniture_plugin_script_position', 'footer'), FALSE, TRUE);
+		$script_written['omniture_plugin'] = TRUE;
+	}
+}
+
+/*
+Utility functions for admin display and value selection
+*/
+function omniture_plugin_region_options() {
+	$options = array(
+		'' => t('None'),
+		'AK' => t('AK'),
+		'FL' => t('FL'),
+		'MW' => t('MW'),
+		'SE' => t('SE'),
+	);
+return $options;
+}
+
+function omniture_plugin_group_options() {
+	$options = array(
+		'' => t('None'),
+		'Eastern' => t('Eastern'),
+		'Florida' => t('Florida'),
+		'Metro' => t('Metro'),
+		'Western' => t('Western'),
+	);
+return $options;
+}
+
+function omniture_plugin_category_options() {
+	$options = array(
+		'' => t('None'),
+		'Activote' => t('Activote'),
+		'Business News' => t('Business News'),
+		'Community Agate' => t('Community Agate'),
+		'Employment' => t('Employment'),
+		'Entertainment' => t('Entertainment'),
+		'Home' => t('Home'),
+		'Lifestyle' => t('Lifestyle'),
+		'Marketplace' => t('Marketplace'),
+		'Mobile' => t('Mobile'),
+		'News' => t('News'),
+		'Opinions' => t('Opinions'),
+		'Other' => t('Other'),
+		'Real Estate' => t('Real Estate'),
+		'Search' => t('Search'),
+		'Sports News' => t('Sports News'),
+		'Transportation' => t('Transportation'),
+		'UCC' => t('UCC'),
+		'Video' => t('Video'),
+	);
+return $options;
+}
+
+function omniture_plugin_sub_category_options() {
+	$options = array(
+		'' =>					t('None'),
+		'97010 ElectionsCandidates' =>		t('97010 ElectionsCandidates'),
+		'97010 ElectionsBlogs' =>		t('97010 ElectionsBlogs'),
+		'97010 ElectionsForums' =>		t('97010 ElectionsForums'),
+		'97010 ElectionsIssues' =>		t('97010 ElectionsIssues'),
+		'97010 ElectionsCivics101' =>		t('97010 ElectionsCivics101'),
+		'97010 ElectionsBallot' =>		t('97010 ElectionsBallot'),
+		'97010 ElectionsvHarmony' =>		t('97010 ElectionsvHarmony'),
+		'97010 ElectionsProfile' =>		t('97010 ElectionsProfile'),
+		'97010 ElectionsCandidates' =>		t('97010 ElectionsCandidates'),
+		'97010 Archives' =>			t('97010 Archives'),
+		'97010 AllBusiness' =>			t('97010 AllBusiness'),
+		'97010 BusinessFinancialMarkets' =>	t('97010 BusinessFinancialMarkets'),
+		'97010 BusinessGeneral' =>		t('97010 BusinessGeneral'),
+		'97010 BusinessPersonal' =>		t('97010 BusinessPersonal'),
+		'97010 AllCommunityAgate' =>		t('97010 AllCommunityAgate'),
+		'97010 CABirths' =>			t('97010 CABirths'),
+		'97010 CAEngagements' =>		t('97010 CAEngagements'),
+		'97010 CAObituaries' =>			t('97010 CAObituaries'),
+		'97010 CAPolice' =>			t('97010 CAPolice'),
+		'97010 CAWeddings' =>			t('97010 CAWeddings'),
+		'97020 AllEmployment' =>		t('97020 AllEmployment'),
+		'97020 EmploymentClassifieds' =>	t('97020 EmploymentClassifieds'),
+		'97020 EmploymentContent' =>		t('97020 EmploymentContent'),
+		'97020 EmploymentInventory' =>		t('97020 EmploymentInventory'),
+		'97020 EmploymentReviews' =>		t('97020 EmploymentReviews'),
+		'97040 AllEntertainment' =>		t('97040 AllEntertainment'),
+		'97040 EntertainmentCalendar' =>	t('97040 EntertainmentCalendar'),
+		'97040 EntertainmentEvents' =>		t('97040 EntertainmentEvents'),
+		'97040 EntertainmentMovies' =>		t('97040 EntertainmentMovies'),
+		'97040 EntertainmentMusic' =>		t('97040 EntertainmentMusic'),
+		'97040 EntertainmentReviews' =>		t('97040 EntertainmentReviews'),
+		'97040 EntertainmentTV' =>		t('97040 EntertainmentTV'),
+		'97010 Home' =>				t('97010 Home'),
+		'97010 AllLifestyle' =>			t('97010 AllLifestyle'),
+		'97010 LifestyleFood' =>		t('97010 LifestyleFood'),
+		'97010 LifestylePeople' =>		t('97010 LifestylePeople'),
+		'97010 LifestyleReligion' =>		t('97010 LifestyleReligion'),
+		'97010 LifestyleTechnology' =>		t('97010 LifestyleTechnology'),
+		'97010 LifestyleTravel' =>		t('97010 LifestyleTravel'),
+		'97020 AllMarketplace' =>		t('97020 AllMarketplace'),
+		'97020 MarketplaceAnnouncements' =>	t('97020 MarketplaceAnnouncements'),
+		'97020 MarketplaceBusinessDirectory' =>	t('97020 MarketplaceBusinessDirectory'),
+		'97020 MarketplaceCareerbuilder' =>	t('97020 MarketplaceCareerbuilder'),
+		'97020 MarketplaceGarageSales' =>	t('97020 MarketplaceGarageSales'),
+		'97020 MarketplaceLegals' =>		t('97020 MarketplaceLegals'),
+		'97020 MarketplaceMerchandise' =>	t('97020 MarketplaceMerchandise'),
+		'97020 MarketplacePets' =>		t('97020 MarketplacePets'),
+		'97020 MarketplaceServices' =>		t('97020 MarketplaceServices'),
+		'97020 MarketplaceTopJobs' =>		t('97020 MarketplaceTopJobs'),
+		'97050 AllMobile' =>			t('97050 AllMobile'),
+		'97050 MobileBlogs' =>			t('97050 MobileBlogs'),
+		'97050 MobileClassifieds' =>		t('97050 MobileClassifieds'),
+		'97050 MobileMovies' =>			t('97050 MobileMovies'),
+		'97050 MobileNews' =>			t('97050 MobileNews'),
+		'97050 MobileSpotted' =>		t('97050 MobileSpotted'),
+		'97050 MobileYellowAdvantage' =>	t('97050 MobileYellowAdvantage'),
+		'97010 AllNews' =>			t('97010 AllNews'),
+		'97010 NewsAP' =>			t('97010 NewsAP'),
+		'97010 NewsLegals' =>			t('97010 NewsLegals'),
+		'97010 NewsLocal' =>			t('97010 NewsLocal'),
+		'97010 NewsNonLocal' =>			t('97010 NewsNonLocal'),
+		'97010 NewsState' =>			t('97010 NewsState'),
+		'97010 NewsWeather' =>			t('97010 NewsWeather'),
+		'97010 AllOpinions' =>			t('97010 AllOpinions'),
+		'97010 OpinionsColumnists' =>		t('97010 OpinionsColumnists'),
+		'97010 OpinionsEditorials' =>		t('97010 OpinionsEditorials'),
+		'97010 OpinionsLetters' =>		t('97010 OpinionsLetters'),
+		'97040 Other' =>			t('97040 Other'),
+		'97020 AllRE' =>			t('97020 AllRE'),
+		'97020 REClassifieds' =>		t('97020 REClassifieds'),
+		'97020 REContent' =>			t('97020 REContent'),
+		'97020 REInventory' =>			t('97020 REInventory'),
+		'97020 RENews' =>			t('97020 RENews'),
+		'97010 AllSports' =>			t('97010 AllSports'),
+		'97010 SportsCollege' =>		t('97010 SportsCollege'),
+		'97010 SportsLocal' =>			t('97010 SportsLocal'),
+		'97010 SportsOther' =>			t('97010 SportsOther'),
+		'97010 SportsOutdoor' =>		t('97010 SportsOutdoor'),
+		'97010 SportsProfessional' =>		t('97010 SportsProfessional'),
+		'97020 AllAutos' =>			t('97020 AllAutos'),
+		'97020 AutosContent' =>			t('97020 AutosContent'),
+		'97020 AutosInventory' =>		t('97020 AutosInventory'),
+		'97020 AutosReviews' =>			t('97020 AutosReviews'),
+		'97020 AutosSearch' =>			t('97020 AutosSearch'),
+		'97030 AllUCC' =>			t('97030 AllUCC'),
+		'97030 UCCBlogs' =>			t('97030 UCCBlogs'),
+		'97030 UCCBlogsCommunity' =>		t('97030 UCCBlogsCommunity'),
+		'97030 UCCBlogsExpert' =>		t('97030 UCCBlogsExpert'),
+		'97030 UCCBlogsNewsroom' =>		t('97030 UCCBlogsNewsroom'),
+		'97030 UCCGroups' =>			t('97030 UCCGroups'),
+		'97030 UCCMessageBoards' =>		t('97030 UCCMessageBoards'),
+		'97030 UCCPolls' =>			t('97030 UCCPolls'),
+		'97030 UCCProfiles' =>			t('97030 UCCProfiles'),
+		'97030 UCCRatings' =>			t('97030 UCCRatings'),
+		'97030 UCCSpotted' =>			t('97030 UCCSpotted'),
+		'97030 NewsVideo' =>			t('97030 NewsVideo'),
+		'97030 UCCVideo' =>			t('97030 UCCVideo'),
+		'97040 Search' =>			t('97040 Search'),
+		'97040 SearchImage' =>			t('97040 SearchImage'),
+		'97040 SearchAuto' =>			t('97040 SearchAuto'),
+	);
+return $options;
+}

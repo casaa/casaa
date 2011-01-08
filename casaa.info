@@ -1,0 +1,22 @@
+; $Id: casaa.info,v 1.3 2010/02/26 21:29:49 cntlscrut Exp $
+name = Context Ad Serving and Analytics
+description = Framework to manage ads and analytics plugins.
+package = CASAA
+core = 6.x
+version = "6.x-1.0.0"
+core = "6.x"
+project = "CASAA"
+
+; Information added by drupal.org packaging script on 2009-08-12
+version = "6.x-1.5-beta2"
+core = "6.x"
+project = "casaa"
+datestamp = "1250093129"
+
+
+; Information added by drupal.org packaging script on 2010-04-15
+version = "6.x-1.16-rc1"
+core = "6.x"
+project = "casaa"
+datestamp = "1271340009"
+

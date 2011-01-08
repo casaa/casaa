@@ -1,0 +1,148 @@
+.yahoo-ad {
+	font-size: 10pt;
+}
+
+.yahoo-ad a {
+	font-weight: bold;
+}
+
+.yahoo-text {
+	font-family: Arial, Helvetica, sans-serif; 
+	font-size: 8pt; 
+	font-weight: bold;
+	color: black;
+	padding: 1px 0px;
+	background: white;
+}
+
+.yahoo-what {
+	font-family: Arial, Helvetica, sans-serif; 
+	font-size: 8pt; 
+	font-weight: bold;
+	color: navy;
+	padding: 1px 0px;
+	background: white;
+	width: 100%;
+	text-align: right;
+}
+
+.yahoo-what a {
+	font-family: Arial, Helvetica, sans-serif; 
+	font-size: 8pt; 
+	font-weight: bold;
+	color: navy;
+	padding: 3px;
+	width: 100%;
+}
+
+.ytitle {
+	color: navy;
+}
+
+
+.yhost {
+	font-size: 8pt;
+	text-decoration: none;
+	color: black;
+}
+
+.ydesc {
+	font-size: 8pt;
+}
+
+.yad {
+	padding: 0px 3px 0 3px;
+}
+
+.clsResult {
+	background: #fff;
+	font-size: 1em;
+	margin: 0px 0px 0px 0px;
+	padding: 1px 1px;
+}
+
+.clsResultTitle {
+	font-family: Verdana, Arial, sans-serif!important;
+	font-size: 10px;
+	font-weight: bold;
+	text-decoration: underline;
+	color: black!important;
+}
+
+.clsResultTitleNoBold {
+	font-family: Verdana, Arial, sans-serif;
+	font-size: 8pt;
+	text-decoration: underline;
+	color: #A6372B;
+}
+
+.clsResultDescription {
+	font-family: Verdana, Arial, sans-serif;
+	font-size: 8pt;
+}
+
+.clsURL {
+	font-family: Verdana, Arial, sans-serif;
+	font-size: 7pt;
+	COLOR: black;
+}
+
+.clsCell {
+	background: white!important;
+	cursor:pointer; cursor:hand;
+	border: 0px!important;
+}
+
+.clsMargin tr {
+    height: 5px;
+}
+
+.clsMargin {
+	background: white;
+}
+
+div.yahoo-ad td div {
+    background-color: none;
+}
+
+
+body table#outer tr td a.title {
+  background: #fff;
+  border-top: none;
+	border: none;
+  color: #000;
+  display: block;
+  padding: 3px;
+  text-align: right;
+  width: auto;
+  height: 100%;
+  border-style: none;
+  font-weight: bold;
+  font-size: 8pt; 
+  font-family: Arial, Helvetica, sans-serif; 
+}
+
+body .yahoo-ads a.title:visited, 
+body .yahoo-ads a.title:link, 
+body .yahoo-ads a.title:active {
+	color: #000;
+	background: #000;
+}
+
+a.title {
+	background: #000;
+}
+
+#outer table td {
+	background: #fff;
+}
+
+body .clsResultDescription {
+	font-size: 9px;
+}
+}
+
+body .clsURL {
+	color: red;
+}
+}

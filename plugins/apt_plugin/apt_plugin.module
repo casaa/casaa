@@ -1,0 +1,1412 @@
+<?php
+/********************************
+* Yahoo APT plugin for Ad/Analytics Framework
+* version: 6.x-dev
+* Author: Chris Johnson, Based on Geoff's apt plugin ported to 6x by Roger Soper
+*
+* Interacts with CASAA to output APT ad-serving script. Global settings
+* allow for definition of APT information about the publication and for the
+* definition of ad positions which will then be provided as blocks for placement.
+*
+* TODO
+*   Allow for multiple values to be selected where APT allows for it (topics, sections, etc)
+*   Validation and scrubbing of free form user input
+*   Information for help screens
+*   Better flexibilty in debug and debug flags
+*   Allow for disabling of automatic values via configuration
+*********************************/
+
+define('CASAA_APT_SLT_NAME', 'name');
+define('CASAA_APT_SLT_SIZE', 'size');
+define('CASAA_APT_SLT_PLACE','placement');
+define('CASAA_APT_SLT_CAT',  'ccc');
+define('CASAA_APT_SLT_SIZEW','weight');
+define('CASAA_APT_SLT_DEL',  'delete');
+
+define('CASAA_APT_PUB_ID',    'apt_pubid');
+define('CASAA_APT_SITE',      'apt_site');
+define('CASAA_APT_SLOT',      'apt_slot_definitions');
+
+define('CASAA_APT_TOPICS',    'apt_plugin_topic_id');
+define('CASAA_APT_TYPES',     'apt_plugin_types');
+define('CASAA_APT_CATEGORIES','apt_plugin_categories');
+define('CASAA_APT_SECTIONS',  'apt_plugin_sections');
+define('CASAA_APT_SLOTS',     'apt_plugin_mapped_slots');
+
+
+/*
+  Returns a data array for building the form to edit or add a new ad position
+  based on the position data handed in through vals
+*/
+function apt_plugin_slot_builder($key, $vals, $weight) {
+  $data = array(
+    '#type' => 'fieldset',
+    '#collapsed' => 'true',
+    '#collapsible' => 'true',
+    '#title' => $vals[CASAA_APT_SLT_NAME] ? $vals[CASAA_APT_SLT_NAME] : 'Define New Slot',
+    '#weight' => $weight,
+  );
+  $data['apt_slot_' . $key . '_' . CASAA_APT_SLT_DEL] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Delete'),
+    '#description' => t('Delete this ad position - note that this will affect your ad blocks so be prepared to reassign blocks'),
+    '#weight' => 0,
+    '#return_value' => CASAA_APT_SLT_DEL,
+  );
+  $data['apt_slot_' . $key . '_' . CASAA_APT_SLT_NAME] = array(
+    '#type' => 'textfield',
+    '#title' => t('Position Name'),
+    '#description' => t('The name of this ad position - do not use spaces or other special characters.'),
+    '#weight' => 1,
+    '#size' => 30,
+    '#maxlength' => 80,
+    '#default_value' => $vals[CASAA_APT_SLT_NAME],
+  );
+  $data['apt_slot_' . $key . '_' . CASAA_APT_SLT_SIZE] = array(
+    '#type' => 'textfield',
+    '#title' => t('Size List'),
+    '#description' => t('Size of this position (comma separate multiple sizes, no spaces (728x90,300x25))'),
+    '#weight' => 2,
+    '#size' => 40,
+    '#maxlength' => 80,
+    '#default_value' => $vals[CASAA_APT_SLT_SIZE],
+  );
+  $data['apt_slot_' . $key . '_' . CASAA_APT_SLT_WEIGHT] = array(
+    '#type' => 'textfield',
+    '#title' => t('Size Weighting'),
+    '#description' => t('Weighting for sizes'),
+    '#weight' => 3,
+    '#size' => 30,
+    '#maxlength' => 80,
+    '#default_value' => $vals[CASAA_APT_SLT_WEIGHT],
+  );
+  $data['apt_slot_' . $key . '_' . CASAA_APT_SLT_PLACE] = array(
+    '#type' => 'select',
+    '#title' => t('Placement'),
+    '#description' => t('Position Location)'),
+    '#options' => array (
+        'ipatf' => t('Above the fold'),
+        'ipstf' => t('Spans the fold'),
+        'ipbtf' => t('Below the fold'),
+      ),
+    '#weight' => 4,
+    '#default_value' => $vals[CASAA_APT_SLT_PLACE],
+  );
+  $data['apt_slot_' . $key . '_' . CASAA_APT_SLT_CAT] = array(
+    '#type' => 'textfield',
+    '#title' => t('Custom Content Category'),
+    '#description' => t('Custom content categories that should apply to this position (comma separate multiple values)'),
+    '#weight' => 5,
+    '#size' => 60,
+    '#maxlength' => 80,
+    '#default_value' => $vals[CASAA_APT_SLT_CAT],
+  );
+
+  return($data);
+}
+
+/*
+form for global settings and ad position definition
+*/
+function apt_plugin_global_settings_form() {
+  $form = array();
+  
+  $form['apt_plugin_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('APT Plugin Settings'),
+  );
+  $form['apt_plugin_settings']['apt_plugin_enabled'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enabled'),
+    '#default_value' => variable_get('apt_plugin_enabled', 0),
+    '#weight' => 10,
+  );
+  $form['apt_plugin_settings']['apt_plugin_has_defaults'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Plugin does not require mapping to produce output'),
+    '#default_value' => variable_get('apt_plugin_has_defaults', 1),
+    '#weight' => 11,
+  );
+  $form['apt_plugin_settings'][CASAA_APT_PUB_ID] = array(
+    '#type' => 'textfield',
+    '#title' => t('Publisher ID'),
+    '#description' => t('Your APT Publisher ID.'),
+    '#size' => 30,
+    '#maxlength' => 80,
+    '#default_value' => variable_get(CASAA_APT_PUB_ID, ''),
+    '#weight' => 20,
+  );
+  $form['apt_plugin_settings'][CASAA_APT_SITE] = array(
+    '#type' => 'textfield',
+    '#title' => t('Site Name'),
+    '#description' => t('The name of this publication.'),
+    '#size' => 30,
+    '#maxlength' => 80,
+    '#default_value' => variable_get(CASAA_APT_SITE, ''),
+    '#weight' => 30,
+  );
+  
+  /* form elements for each configured ad position */
+  $slot_data = variable_get(CASAA_APT_SLOT, null);
+  $i = 0;
+  if ($slot_data) {
+    foreach (unserialize($slot_data) as $key => $vals) {
+      ++$i;
+      $form['apt_plugin_settings']['apt_slot_' . $i] = apt_plugin_slot_builder($i, $vals, 40 + $i);
+    }
+  }
+  ++$i;
+  /* form elements for a new ad position */
+  $form['apt_plugin_settings']['apt_slot_' . $i] = apt_plugin_slot_builder($i, array(), 40 + $i);
+  
+  return $form;
+}
+
+function apt_plugin_global_settings_submit_handler($form, &$form_state) {
+  $slot_data = array();
+  $delete_keys = array();
+  foreach ($form_state['values'] as $key => $value) {
+    if (preg_match('/^apt_slot_\d/', $key)) {
+      $key_array = explode('_', $key);
+      $slot_index = $key_array[2];
+      $slot_data_key = $key_array[3];
+      if ($slot_data_key != 'delete') {
+        $slot_data[$slot_index][$slot_data_key] = $value;
+      }
+  
+      // mark slots which should be deleted or skip any empty definitions (will skip new slot spot)
+      if (($slot_data_key === 'delete' && $value === 'delete') ||
+        ($slot_data_key === 'name' && $value === '')
+      ) {
+        $delete_keys[] = $slot_index;
+      }
+      unset($form_state['values'][$key]);
+    }
+  }
+  foreach ($delete_keys as $key) {
+    unset($slot_data[$key]);
+  }
+  
+  $form_state['values'][CASAA_APT_SLOT] = serialize($slot_data);
+}
+
+function apt_plugin_mapping_settings_form($stored_values = null) {
+  if ($stored_values != null) {
+    $values = unserialize($stored_values);
+  }
+  else {
+    $values = array();
+  }
+  
+  $form = array();
+  $form['apt_plugin'] = array(
+    '#type'  => 'fieldset',
+    '#collapsible'  => true,
+    '#title' => t('APT Plugin Settings'),
+  );
+  
+  /*
+	Get the global definition for all the ads
+     */
+  $slot_data = array();
+  $slot_def = variable_get(CASAA_APT_SLOT, null);
+  if ($slot_def) {
+		$slot_data = unserialize($slot_def);
+  }
+
+  $options = array();
+  
+  foreach ($slot_data as $slot) {
+    $n = $slot['name'];
+		$options[$n] = check_plain($n . ' [ ' . $slot['size'] . ' - '. $slot['placement'] . ' ]');
+		$default_options[] = $n;
+  }
+
+  $form['apt_plugin'][CASAA_APT_SLOTS] = array(
+		'#title' => 'Slots',
+		'#type'  => 'checkboxes',
+		'#options' => $options,
+		'#default_value' => (empty($values[CASAA_APT_SLOTS])) ? $default_options : $values[CASAA_APT_SLOTS],
+		'#description'   => t('Choose the slots that should run on this page'),
+  );
+  
+  // TODO: Up to 10 topics can be specified but we are only allowing 1 until Yahoo uses all 10 for serving guaranteed ads. Otherwise there would have to be a way to order the topic IDs selected
+  $form['apt_plugin'][CASAA_APT_TOPICS] = array(
+    '#type' => 'select',
+    '#title' => 'Topic',
+    '#options' => apt_plugin_topic_options(),
+    '#weight' => 10,
+    '#default_value' => $values[CASAA_APT_TOPICS],
+    '#description' => t('Choose the topic that most closely matches the type of content that will appear. Use News as a default if no other topic seems appropriate'),
+  );
+  $form['apt_plugin'][CASAA_APT_CATEGORIES] = array(
+    '#type' => 'textfield',
+    '#title' => 'Custom Content Categories',
+    '#weight' => 20,
+    '#size' => 40,
+    '#default_value' => $values[CASAA_APT_CATEGORIES],
+    '#description' => t('Custom Content Categories, comma separate multiple values.'),
+  );
+  $form['apt_plugin'][CASAA_APT_SECTIONS] = array(
+    '#type' => 'select',
+    '#title' => 'Custom Sections',
+    '#weight' => 30,
+    '#options' => apt_plugin_section_options(),
+    '#default_value' => $values[CASAA_APT_SECTIONS],
+    '#description' => t('Homepage, Primary Section Front and Article are set automatically. Select others as appropriate or choose none if type of page is not listed.'),
+  );
+  $form['apt_plugin'][CASAA_APT_TYPES] = array(
+    '#type' => 'select',
+    '#title' => 'Custom Types',
+    '#options' => apt_plugin_type_options(),
+    '#weight' => 40,
+    '#default_value' => $values[CASAA_APT_TYPES],
+    '#description' => t('Indicate the function of the page using the custom type or leave set to none if no appropriate type is listed.'),
+  );
+  return $form;
+}
+
+/**
+* manipulate configured mapping data for storage
+*/
+function apt_plugin_mapping_settings_submit_handler($form_values) {
+  $apt_plugin_form_values = array();
+  foreach ($form_values as $key => $value) {
+    if (strpos($key, 'apt_plugin_') !== false && $value != '') {
+      $apt_plugin_form_values[$key] = $value;
+    }
+  }
+  
+  return serialize($apt_plugin_form_values);
+}
+
+/*
+Build the yld_mgr data structure based on configuration, include reference to yieldmanager script
+*/
+function apt_plugin_output($script_values = null) {
+  global $script_written;
+  global $user;
+
+  if($script_written['apt_plugin']) {
+      return;
+  }
+
+  if ($script_values != null) {
+    $mapped_data = unserialize($script_values);
+  }
+
+  $global_data_elements = array(CASAA_APT_TOPICS, CASAA_APT_SECTIONS);
+  $slot_data_elements = array(CASAA_APT_CATEGORIES, CASAA_APT_TYPES);
+
+  // to translate between the keys we store the data with and what APT wants
+  $translation = array();
+  $translation[CASAA_APT_TOPICS]     = 'content_topic_id_list';
+  $translation[CASAA_APT_SECTIONS]   = 'cstm_sctn_list';
+  $translation[CASAA_APT_TYPES]      = 'content_type_list';
+  $translation[CASAA_APT_CATEGORIES] = 'cstm_content_cat_list';
+
+  $output = "\n" . 'yld_mgr = {};' . "\n";
+  $output .= 'yld_mgr.pub_id="' . variable_get(CASAA_APT_PUB_ID, '') . '";' . "\n";
+  $output .= 'yld_mgr.site_name="' . variable_get(CASAA_APT_SITE, '') . '";' . "\n";
+  $output .= 'yld_mgr.request_type="ac";' . "\n";
+  $output .= 'yld_mgr.container_type="js";' . "\n";
+
+  if ($user->uid > 0 && module_exists('profile') && function_exists('profile_load_profile')) {
+    profile_load_profile($user);
+    if ($user->profile_gender == 'M') {
+      $output .= 'yld_mgr.user_gender = "male";' . "\n";
+    } 
+    else if ($user->profile_gender == 'F') {
+      $output .= 'yld_mgr.user_gender = "female";' . "\n";
+    }
+
+    $output .= 'yld_mgr.user_zip = "' . $user->profile_zip . '";' . "\n";
+
+    $year = date('Y');
+    $age = $year - $user->profile_dob['year'];
+
+    if ($age > 65 && $age < $year) {
+      $output .= 'yld_mgr.user_age = "65-100";' . "\n";
+    }
+    else if ($age >= 60) {
+      $output .= 'yld_mgr.user_age = "60-64";' . "\n";
+    }
+    else if ($age >= 55) {
+      $output .= 'yld_mgr.user_age = "55-59";' . "\n";
+    }
+    else if ($age >= 50) {
+      $output .= 'yld_mgr.user_age = "50-54";' . "\n";
+    }
+    else if ($age >= 45) {
+      $output .= 'yld_mgr.user_age = "45-49";' . "\n";
+    }
+    else if ($age >= 40) {
+      $output .= 'yld_mgr.user_age = "40-44";' . "\n";
+    }
+    else if ($age >= 35) {
+      $output .= 'yld_mgr.user_age = "35-39";' . "\n";
+    }
+    else if ($age >= 30) {
+      $output .= 'yld_mgr.user_age = "30-34";' . "\n";
+    }
+    else if ($age >= 25) {
+      $output .= 'yld_mgr.user_age = "25-29";' . "\n";
+    }
+    else if ($age >= 21) {
+      $output .= 'yld_mgr.user_age = "21-24";' . "\n";
+    }
+    else if ($age >= 18) {
+      $output .= 'yld_mgr.user_age = "18-20";' . "\n";
+    }
+    else if ($age >= 13) {
+      $output .= 'yld_mgr.user_age = "13-17";' . "\n";
+    }
+  }
+
+  foreach ($global_data_elements as $key) {
+    if ($mapped_data[$key] != '') {
+      $tmp = '';
+      foreach (explode(',', $mapped_data[$key]) as $val) {
+        $tmp .= ',\'' . $val . '\'';
+      }
+      $output .= 'yld_mgr.' . $translation[$key] . ' = [' . substr($tmp, 1) . '];' . "\n";
+    }
+    else {
+      $output .= 'yld_mgr.' . $translation[$key] . ' = [];' . "\n";
+    }
+  }
+
+  // write the slot information
+  $output .= 'yld_mgr.slots = {};' . "\n";
+  
+  $global_slot_data = variable_get(CASAA_APT_SLOT, null);
+  if ($global_slot_data) {
+    $global_slot_data = unserialize($global_slot_data);
+  }
+  else {
+    $global_slot_data = array();
+  }
+
+  
+  $slot_data = $global_slot_data;
+  
+  
+  if(isset($mapped_data[CASAA_APT_SLOTS]) && count($mapped_data[CASAA_APT_SLOTS]) > 0) {
+    $slot_data = array();
+	foreach($global_slot_data as $slot) {
+		$n = $slot[CASAA_APT_SLT_NAME];
+		if(isset($mapped_data[CASAA_APT_SLOTS][$n]) && $mapped_data[CASAA_APT_SLOTS][$n]) {
+			$slot_data[] = $slot;
+		}
+	}
+  
+  }
+  
+  
+  foreach ($slot_data as $slot) {
+    $output .= 'yld_mgr.slots.' . $slot[CASAA_APT_SLT_NAME] . ' = {};' . "\n";
+    $ad_size_list = '';
+    $ad_size_array = explode(',', $slot[CASAA_APT_SLT_SIZE]);
+    $ad_size_to_use = 0;
+    // if someone specified weighting, add all of the weights together and then randomly
+    // assign a size based on whether the range created by the weight encompasses the given
+    // random number
+    // Example: 1,2,1. Total 4. If rand = 0, size 1 if rand == 1,2, size 2, if rand == 3, size 4
+    // Example: 25,50,25 (same effective weight as 1,2,1).
+    //    If rand < 25, size 1, if rand >= 25 && < 75, size 2, if rand >= 75 && < 100, size 3
+    if ($slot[CASAA_APT_SLT_SIZEW] != '') {
+      $weight_max = 0;
+      $ad_size_weighting = explode(',', $slot[CASAA_APT_SLT_SIZEW]);
+      for ($i = 0; $i < count($ad_size_weighting); ++$i) {
+        $weight_max += $ad_size_weighting[$i];
+      }
+
+      $rnd = rand(0, $weight_max - 1);
+      $weight_range = 0;
+      for ($i = 0; $i < count($ad_size_weighting); ++$i) {
+        $weight_range += $ad_size_weighting[$i];
+        if ($rnd < $weight_range) {
+          $ad_size_list = '\'' . $ad_size_array[$i] . '\'';
+          break;
+        }
+      }
+      // this should never happen but in case there is a logic flaw put in a failsafe
+      if ($ad_size_list == '') {
+        $ad_size_list = '\'' . $ad_size_array[0] . '\'';
+      }
+    }
+    else {
+      $ad_size_list = '\'' . $ad_size_array[rand(0, count($ad_size_array) - 1)] . '\'';
+    }
+
+    $output .= 'yld_mgr.slots.' . $slot[CASAA_APT_SLT_NAME] . '.ad_size_list = [' . $ad_size_list . '];' . "\n";
+    $output .= 'yld_mgr.slots.' . $slot[CASAA_APT_SLT_NAME] . '.ad_delivery_mode = [\'' . $slot[CASAA_APT_SLT_PLACE] . '\'];' . "\n";
+
+    // write any slot specifc data stored with the mapping
+    foreach ($slot_data_elements as $key) {
+      if ($mapped_data[$key] != '') {
+        $tmp = '';
+        foreach (explode(',', $mapped_data[$key]) as $val) {
+          $tmp .= ',\'' . $val . '\'';
+        }
+        $output .= 'yld_mgr.slots.' . $slot[CASAA_APT_SLT_NAME] . '.' . $translation[$key] . ' = [' . substr($tmp, 1) . '];' . "\n";
+      }
+      else {
+        $output .= 'yld_mgr.slots.' . $slot[CASAA_APT_SLT_NAME] . '.' . $translation[$key] . ' = [];' . "\n";
+      }
+    }
+
+    // write any slot specific data stored with the mapping
+    if ($slot[CASAA_APT_SLT_CAT] != '') {
+      foreach (explode(',', $slot[CASAA_APT_SLT_CAT]) as $val) {
+        $output .= 'yld_mgr.slots.' . $slot[CASAA_APT_SLT_NAME] . '.cstm_content_cat_list.push(\'' . $val . '\');' . "\n";
+      }
+    }
+
+    // write any slot specific data requested in the URL
+    if (strpos($_SERVER['QUERY_STRING'], 'mmo_ccc=') !== FALSE) {
+      foreach (explode(',', $_GET['mmo_ccc']) as $val) {
+        $output .= 'yld_mgr.slots.' . $slot[CASAA_APT_SLT_NAME] . '.cstm_content_cat_list.push(\'' . $val . '\');' . "\n";
+      }
+    }
+  }
+
+  if (drupal_is_front_page()) {
+    $output .= 'yld_mgr.' . $translation[CASAA_APT_TOPICS] . '.push(\'20201001\');' . "\n";
+    $output .= 'yld_mgr.' . $translation[CASAA_APT_SECTIONS] . '.push(\'Homepage\');' . "\n";
+  }
+  else if (preg_match('/^node/', $_GET['q'])) {
+    $output .= 'yld_mgr.' . $translation[CASAA_APT_SECTIONS] . '.push(\'Article\');' . "\n";
+  }
+  else {
+    $output .= 'yld_mgr.' . $translation[CASAA_APT_SECTIONS] . '.push(\'Primary Section Front\');' . "\n";
+  }
+
+  $output .= 'if (yld_mgr.' . $translation[CASAA_APT_TOPICS] . '.length == 0) {' . "\n";
+  $output .= "\tyld_mgr." . $translation[CASAA_APT_TOPICS] . '.push(\'20200001\');' . "\n";
+  $output .= '}' . "\n";
+
+  if (strpos($_SERVER['QUERY_STRING'], 'mmo_ad_spots=true') !== FALSE) {
+    $output .= 'function apt_AD(position)  ' .  "\n";
+    $output .= <<<EOFUNC
+{
+var key_trans_slot =  {'ad_size_list' : 'Sizes:', 'ad_delivery_mode' : 'Placement', 'cstm_content_cat_list' : 'CCC', 'content_type_list': 'Content Types'};
+var key_trans_global = {'content_topic_id_list' : 'Topics', 'cstm_sctn_list' : 'Custom Sections', 'site_name' : 'Publication'};
+
+document.write('<div style="text-align: left; overflow: auto; display: block; border: solid 1px #900; background-color: #eee; color: #000"><strong>ad spot ' + position + '</strong><br>');
+for (key in key_trans_slot)
+{
+	if (typeof(yld_mgr.slots[position][key]) != 'object')
+	{
+		document.write('<strong>' + key_trans_slot[key] + '</strong>: ' + yld_mgr.slots[position][key] + '<br>');
+	}
+	else if (typeof(yld_mgr.slots[position][key]) == 'object')
+	{
+		document.write('<strong>' + key_trans_slot[key] + '</strong>:<span style="padding-left: 1em;">');
+		for (subkey in yld_mgr.slots[position][key])
+		{
+			document.write(yld_mgr.slots[position][key][subkey] + ', ');
+		}
+		document.write('</span><br>');
+	}
+}
+
+for (key in key_trans_global)
+{
+	if (typeof(yld_mgr[key]) != 'object')
+	{
+		document.write('<strong>' + key_trans_global[key] + '</strong>: ' + yld_mgr[key] + '<br>');
+	}
+	else
+	{
+		document.write('<strong>' + key_trans_global[key] + '</strong>:<span style="padding-left: 1em;">');
+		for (subkey in yld_mgr[key])
+		{
+			document.write(yld_mgr[key][subkey] + ', ');
+		}
+		document.write('</span><br>');
+	}
+}
+document.write('</div>');
+}
+EOFUNC;
+    $output .= "\n";
+  }
+  else {
+    $output .= 'function apt_AD(pos) { yld_mgr.place_ad_here(pos); }' . "\n";
+    $output .= 'document.write(\'<scr\' + \'ipt type="text/javascript" src="http://e.yieldmanager.net/script.js"></scr\' + \'ipt>\');' . "\n";
+  }
+  drupal_add_js( $output, 'inline', 'header', FALSE, FALSE, TRUE);
+  $script_written['apt_plugin'] = TRUE;
+}
+
+/*
+Expose a block for placing each configured ad position
+*/
+function apt_plugin_block($op, $delta = NULL, $list = NULL) {
+  $slot_def = variable_get(CASAA_APT_SLOT, null);
+  if ($slot_def) {
+    $slots = unserialize($slot_def);
+    $i = 0;
+    foreach ($slots as $key => $slot_data) {
+      if ($op == 'list') {
+        $blocks[] = array(
+          'info' => t('Ad Position:  ' . $slot_data[CASAA_APT_SLT_NAME]),
+          'cache' => BLOCK_CACHE_GLOBAL,
+        );
+      }
+      else if ($op == 'view' && $i == $delta ) { //&& casaa_is_plugin_enabled('apt_plugin')
+        $blocks = array(
+          'content' => '<script type="text/javascript">apt_AD(\'' . $slot_data[CASAA_APT_SLT_NAME] . '\');</script>',
+        );
+        last;
+      }
+      ++$i;
+    }
+  }
+  return $blocks;
+}
+
+/*
+Provide a short version of the configured data for use in the list display
+*/
+function apt_plugin_table_display_data($stored_values = null) {
+  if ($stored_values == null) {
+    return 'No Data';
+  }
+  else {
+    $apt_data = unserialize($stored_values);
+    return apt_plugin_get_topic($apt_data['apt_plugin_topic_id']);
+  }
+}
+
+/*
+Utility functions for admin display and value selection
+*/
+function apt_plugin_section_options() {
+  $options = array(
+    '' => t('None'),
+    'Secondary Front'         => t('Secondary Front'),
+    'Tertiary Front'          => t('Tertiary Front'),
+    'Blog Front'              => t('Blog Front'),
+    'Blog Post'               => t('Blog Post'),
+    'Calendar'                => t('Calendar'),
+    'Classfieds Results'      => t('Classfieds Results'),
+    'Classifieds Posting'     => t('Classifieds Posting'),
+    'Column'                  => t('Column'),
+    'Mobile'                  => t('Mobile'),
+    'Opinion'                 => t('Opinion'),
+    'Photo Gallery'           => t('Photo Gallery'),
+    'Poll'                    => t('Poll'),
+    'Reviews'                 => t('Reviews'),
+    'Scoreboard'              => t('Scoreboard'),
+    'Search Results'          => t('Search Results'),
+    'Spanish Language'        => t('Spanish Language'),
+    'Special Section Front'   => t('Special Section Front'),
+    'Special Section Article' => t('Special Section Article'),
+    'Video'                   => t('Video'),
+  );
+  return $options;
+}
+
+function apt_plugin_type_options() {
+  $options = array(
+    '' => t('None'),
+    'fn_b2b'                  => t('B2B'),
+    'fn_b2b_ea'               => t('B2B->Enterprise Applications'),
+    'fn_dl'                   => t('Downloads and Real-time Apps'),
+    'fn_dl_md'                => t('Downloads and Real-time Apps->Media'),
+    'fn_dl_sw'                => t('Downloads and Real-time Apps->Software'),
+    'fn_ec'                   => t('E-Commerce'),
+    'fn_ec_auctn'             => t('E-Commerce->Auctions'),
+    'fn_ec_pmt'               => t('E-Commerce->Payment Processing'),
+    'fn_ec_agg'               => t('E-Commerce->Shopping'),
+    'fn_ic'                   => t('Internet Communication'),
+    'fn_ic_mail'              => t('Internet Communication->E-Mail Provider'),
+    'fn_ic_mailmsg'           => t('Internet Communication->Emal Embedded'),
+    'fn_ic_nwsltr'            => t('Internet Communication->Email Message'),
+    'fn_ic_game'              => t('Internet Communication->Gaming'),
+    'fn_ic_im'                => t('Internet Communication->Instant Messenger'),
+    'fn_ic_immsg'             => t('Internet Communication->Chat Session'),
+    'fn_ic_soc'               => t('Internet Communication->Social Networking'),
+    'fn_class'                => t('Classifieds'),
+    'fn_class_dat'            => t('Classifieds->Dating'),
+    'fn_class_jobs'           => t('Classifieds->Job Boards'),
+    'fn_class_ls'             => t('Classifieds->Listings'),
+    'fn_news'                 => t('News'),
+    'fn_prtl'                 => t('Portal'),
+    'fn_prtl_srch'            => t('Portal->Search'),
+    'fn_prtl_serp'            => t('Portal->Search Results'),
+    'fn_prtl_dom'             => t('Portal->Domainer'),
+    'fn_ref'                  => t('Reference'),
+    'fn_ref_db'               => t('Reference->Catalogs and Databases'),
+    'fn_ref_dir'              => t('Reference->Directories'),
+    'fn_ref_howto'            => t('Reference->How-to Guides'),
+    'fn_ref_kb'               => t('Reference->Knowledge and Facts'),
+    'fn_ref_map'              => t('Reference->Maps'),
+    'fn_adm'                  => t('Site Administration'),
+    'fn_adm_reg'              => t('Site Administration->Registration'),
+    'fn_adm_front'            => t('Site Administration->Frontpage'),
+    'fn_adm_li'               => t('Site Administration->Log In'),
+    'fn_adm_lo'               => t('Site Administration->Log Out'),
+    'fn_adm_err'              => t('Site Administration->Error'),
+    'fn_ugu'                  => t('User-Generated Un-Moderated'),
+    'fn_ugu_blog'             => t('User-Generated Un-Moderated->Blogs'),
+    'fn_ugu_rvws'             => t('User-Generated Un-Moderated->Customer Reviews'),
+    'fn_ugu_boards'           => t('User-Generated Un-Moderated->Discussion Boards'),
+    'fn_ugu_mda'              => t('User-Generated Un-Moderated->Media Sharing'),
+    'fn_ugu_opn'              => t('User-Generated Un-Moderated->Open Source'),
+    'fn_ugu_wiki'             => t('User-Generated Un-Moderated->Wiki'),
+    'fn_ugm'                  => t('User-Generated Moderated'),
+    'fn_ugm_blog'             => t('User-Generated Moderated->Blogs'),
+    'fn_ugm_rvw'              => t('User-Generated Moderated->Customer Reviews'),
+    'fn_ugm_boards'           => t('User-Generated Moderated->Discussion Boards'),
+    'fn_ugm_mda'              => t('User-Generated Moderated->Media Sharing'),
+    'fn_ugm_opn'              => t('User-Generated Moderated->Open Source'),
+    'fn_ugm_subj'             => t('User-Generated Moderated->Academic Subjects'),
+    'fn_ugm_wiki'             => t('User-Generated Moderated->Wiki'),
+  );
+  return $options;
+}
+
+function apt_plugin_topic_options() {
+  $options = array(
+    '20200001' => t('Default'),
+    '20201001' => t('Home Page'),
+    '20201501' => t('Business'),
+    '20202001' => t('Business->Agriculture'),
+    '20202501' => t('Business->Banking'),
+    '20203001' => t('Business->Banking->Bankruptcies'),
+    '20203501' => t('Business->Energy'),
+    '20204001' => t('Business->Energy->Electric'),
+    '20204501' => t('Business->Energy->Oil'),
+    '20210501' => t('Business->Health Med Fit'),
+    '20211001' => t('Business->Health Med Fit->Fitness'),
+    '20211501' => t('Business->Health Med Fit->Health'),
+    '20212001' => t('Business->Health Med Fit->Medical'),
+    '_8230501' => t('Business->Health Med Fit->Medical->Alt'),
+    '20212501' => t('Business->Investment'),
+    '20213001' => t('Business->Investment->Markets & Stocks'),
+    '20213501' => t('Business->Investment->Personal Finance'),
+    '20205001' => t('Business->Legal'),
+    '20205501' => t('Business->Local'),
+    '20214001' => t('Business->National & International'),
+    '20206001' => t('Business->Real Estate'),
+    '20206501' => t('Business->Technology'),
+    '20207001' => t('Business->Technology->Aerospace'),
+    '20207501' => t('Business->Technology->Biotech'),
+    '20208001' => t('Business->Technology->Computers'),
+    '20208501' => t('Business->Technology->Electronics'),
+    '20209001' => t('Business->Transportation'),
+    '20209501' => t('Business->Transportation->Aviation'),
+    '20210001' => t('Business->Transportation->Cars'),
+    '20214501' => t('Classifieds'),
+    '20215001' => t('Classifieds->Announcements'),
+    '20215501' => t('Classifieds->Announcements->Baby'),
+    '20216001' => t('Classifieds->Announcements->Legals'),
+    '20216501' => t('Classifieds->Announcements->Lost & Found'),
+    '20217001' => t('Classifieds->Announcements->Obituaries'),
+    '20217501' => t('Classifieds->Announcements->Tickets'),
+    '20218001' => t('Classifieds->Announcements->Weddings'),
+    '20258001' => t('Classifieds->Garage & Yard Sales'),
+    '20218501' => t('Classifieds->Jobs'),
+    '_8231001' => t('Classifieds->Jobs->Advertising & Public Relations'),
+    '20219001' => t('Classifieds->Jobs->Arts & Entertainment'),
+    '20219501' => t('Classifieds->Jobs->Banking & Finance'),
+    '20220001' => t('Classifieds->Jobs->Customer Service'),
+    '20220501' => t('Classifieds->Jobs->Design'),
+    '20221001' => t('Classifieds->Jobs->Education'),
+    '20221501' => t('Classifieds->Jobs->Engineering'),
+    '20222001' => t('Classifieds->Jobs->General Business'),
+    '_8231501' => t('Classifieds->Jobs->General Business->Accounting & Finance'),
+    '_8232001' => t('Classifieds->Jobs->General Business->Business Development'),
+    '_8232501' => t('Classifieds->Jobs->General Business->Business Opportunity'),
+    '_8233001' => t('Classifieds->Jobs->General Business->Clerical & Administrative'),
+    '_8233501' => t('Classifieds->Jobs->General Business->Consultant'),
+    '_8234001' => t('Classifieds->Jobs->General Business->Entry Level'),
+    '_8234501' => t('Classifieds->Jobs->General Business->Executive'),
+    '_8235001' => t('Classifieds->Jobs->General Business->Human Resources'),
+    '_8235501' => t('Classifieds->Jobs->General Business->Management'),
+    '_8236001' => t('Classifieds->Jobs->General Business->Sales'),
+    '_8236501' => t('Classifieds->Jobs->General Business->Strategy Planning'),
+    '20222501' => t('Classifieds->Jobs->General Labor'),
+    '20223001' => t('Classifieds->Jobs->Govt & Politics'),
+    '20223501' => t('Classifieds->Jobs->Grocery'),
+    '20224001' => t('Classifieds->Jobs->Health Med Fit'),
+    '_8237001' => t('Classifieds->Jobs->Health Med Fit->Fitness'),
+    '_8237501' => t('Classifieds->Jobs->Health Med Fit->Health'),
+    '_8238001' => t('Classifieds->Jobs->Health Med Fit->Medical'),
+    '20224501' => t('Classifieds->Jobs->Hospitality'),
+    '20225001' => t('Classifieds->Jobs->Insurance'),
+    '20225501' => t('Classifieds->Jobs->Legal'),
+    '_8238501' => t('Classifieds->Jobs->Legal->Law Enforcement'),
+    '20226001' => t('Classifieds->Jobs->Manufacturing & Production'),
+    '_8239001' => t('Classifieds->Jobs->Manufacturing & Production->CadCam'),
+    '_8239501' => t('Classifieds->Jobs->Manufacturing & Production->Distribution & Shipping'),
+    '_8240001' => t('Classifieds->Jobs->Manufacturing & Production->Fabrication'),
+    '_8240501' => t('Classifieds->Jobs->Manufacturing & Production->Inventory'),
+    '_8241001' => t('Classifieds->Jobs->Manufacturing & Production->Purchasing'),
+    '_8241501' => t('Classifieds->Jobs->Manufacturing & Production->Quality Control'),
+    '_8242001' => t('Classifieds->Jobs->Manufacturing & Production->Supply Chain'),
+    '_8242501' => t('Classifieds->Jobs->Manufacturing & Production->Warehouse'),
+    '20226501' => t('Classifieds->Jobs->Marketing'),
+    '20227001' => t('Classifieds->Jobs->Media'),
+    '_8243001' => t('Classifieds->Jobs->Media->New Media & Internet'),
+    '20227501' => t('Classifieds->Jobs->Nonprofit'),
+    '_8243501' => t('Classifieds->Jobs->Other'),
+    '20228001' => t('Classifieds->Jobs->Pharmaceutical'),
+    '20228501' => t('Classifieds->Jobs->Professional Services'),
+    '20229001' => t('Classifieds->Jobs->Real Estate'),
+    '20229501' => t('Classifieds->Jobs->Restaurants & Food'),
+    '_8244001' => t('Classifieds->Jobs->Retail'),
+    '20230001' => t('Classifieds->Jobs->Science'),
+    '_8244501' => t('Classifieds->Jobs->Science->BioTech'),
+    '_8245001' => t('Classifieds->Jobs->Science->Research'),
+    '20230501' => t('Classifieds->Jobs->Services'),
+    '20231001' => t('Classifieds->Jobs->Skilled Labor'),
+    '_8245501' => t('Classifieds->Jobs->Skilled Labor->Automotive'),
+    '_8246001' => t('Classifieds->Jobs->Skilled Labor->Construction'),
+    '_8246501' => t('Classifieds->Jobs->Skilled Labor->Facilities'),
+    '_8247001' => t('Classifieds->Jobs->Skilled Labor->Install Maintain Repair'),
+    '_8247501' => t('Classifieds->Jobs->Skilled Labor->Welding'),
+    '20231501' => t('Classifieds->Jobs->Tech'),
+    '_8248001' => t('Classifieds->Jobs->Tech->Computers'),
+    '_8248501' => t('Classifieds->Jobs->Tech->Electronics'),
+    '_8249001' => t('Classifieds->Jobs->Tech->Information Tech'),
+    '_8249501' => t('Classifieds->Jobs->Tech->Telecommunications'),
+    '20232001' => t('Classifieds->Jobs->Training'),
+    '20232501' => t('Classifieds->Jobs->Transportation'),
+    '20240501' => t('Classifieds->Livestock'),
+    '20242501' => t('Classifieds->Livestock->Barn'),
+    '20241501' => t('Classifieds->Livestock->Feed & Grain'),
+    '20241001' => t('Classifieds->Livestock->Ranch & Farm'),
+    '20242001' => t('Classifieds->Livestock->Tractor & Trailer'),
+    '20233001' => t('Classifieds->Merchandise'),
+    '20233501' => t('Classifieds->Merchandise->Antiques'),
+    '20234001' => t('Classifieds->Merchandise->Baby'),
+    '20234501' => t('Classifieds->Merchandise->Furniture'),
+    '20235001' => t('Classifieds->Merchandise->Garage Sales'),
+    '20235501' => t('Classifieds->Merchandise->Health Med Fit'),
+    '_8250001' => t('Classifieds->Merchandise->Health Med Fit->Fitness'),
+    '_8250501' => t('Classifieds->Merchandise->Health Med Fit->Health'),
+    '_8251001' => t('Classifieds->Merchandise->Health Med Fit->Medical'),
+    '20236001' => t('Classifieds->Merchandise->Jewelry'),
+    '20236501' => t('Classifieds->Merchandise->Kids & Teens'),
+    '20237001' => t('Classifieds->Merchandise->Tech'),
+    '_8251501' => t('Classifieds->Merchandise->Tech->Computers'),
+    '_8252001' => t('Classifieds->Merchandise->Tech->Electronics'),
+    '_8252501' => t('Classifieds->Other'),
+    '20237501' => t('Classifieds->Personals'),
+    '20238001' => t('Classifieds->Pets'),
+    '20238501' => t('Classifieds->Pets->Adoption'),
+    '20239001' => t('Classifieds->Pets->Community'),
+    '20239501' => t('Classifieds->Pets->Lost & Found'),
+    '20240001' => t('Classifieds->Pets->Services'),
+    '20243001' => t('Classifieds->Real Estate'),
+    '20244001' => t('Classifieds->Real Estate->Apartments'),
+    '_8253001' => t('Classifieds->Real Estate->Apartments->Rentals'),
+    '20244501' => t('Classifieds->Real Estate->Commercial'),
+    '_8253501' => t('Classifieds->Real Estate->Commercial->New'),
+    '_8254001' => t('Classifieds->Real Estate->Commercial->Rentals'),
+    '_8254501' => t('Classifieds->Real Estate->Commercial->Resale'),
+    '_8255001' => t('Classifieds->Real Estate->Foreclosures'),
+    '20245001' => t('Classifieds->Real Estate->Home'),
+    '_8255501' => t('Classifieds->Real Estate->Home->Condos'),
+    '_8256001' => t('Classifieds->Real Estate->Home->Condos->New'),
+    '_8256501' => t('Classifieds->Real Estate->Home->Condos->Rentals'),
+    '_8257001' => t('Classifieds->Real Estate->Home->Condos->Resale'),
+    '_8257501' => t('Classifieds->Real Estate->Home->Retirement'),
+    '_8258001' => t('Classifieds->Real Estate->Home->Single Family'),
+    '_8258501' => t('Classifieds->Real Estate->Home->Single Family->New'),
+    '_8259001' => t('Classifieds->Real Estate->Home->Single Family->Rentals'),
+    '_8259501' => t('Classifieds->Real Estate->Home->Single Family->Resale'),
+    '_8260001' => t('Classifieds->Real Estate->Mobile Homes'),
+    '20243501' => t('Classifieds->Real Estate->New Construction'),
+    '20245501' => t('Classifieds->Real Estate->Open Houses'),
+    '20246001' => t('Classifieds->Real Estate->Services'),
+    '20246501' => t('Classifieds->Real Estate->Time Share'),
+    '20247001' => t('Classifieds->Real Estate->Vacation Rentals'),
+    '20257001' => t('Classifieds->Search'),
+    '20247501' => t('Classifieds->Services'),
+    '20248001' => t('Classifieds->Services->Business'),
+    '_8260501' => t('Classifieds->Services->Business->Accounting'),
+    '20248501' => t('Classifieds->Services->Child Care'),
+    '20249001' => t('Classifieds->Services->Cleaning'),
+    '20249501' => t('Classifieds->Services->Elder Care'),
+    '20250001' => t('Classifieds->Services->Health Med Fit'),
+    '_8261001' => t('Classifieds->Services->Health Med Fit->Fitness'),
+    '_8261501' => t('Classifieds->Services->Health Med Fit->Health'),
+    '_8262001' => t('Classifieds->Services->Health Med Fit->Medical'),
+    '20250501' => t('Classifieds->Services->Home'),
+    '20251001' => t('Classifieds->Services->Kids & Teens'),
+    '20252001' => t('Classifieds->Services->Personal Finance'),
+    '20251501' => t('Classifieds->Services->Personal'),
+    '20252501' => t('Classifieds->Transportation'),
+    '20253001' => t('Classifieds->Transportation->Aviation'),
+    '20253501' => t('Classifieds->Transportation->Boating'),
+    '20254001' => t('Classifieds->Transportation->Car or Auto Care & Repair'),
+    '20254501' => t('Classifieds->Transportation->Cars'),
+    '_8262501' => t('Classifieds->Transportation->Cars->Classic'),
+    '_8263001' => t('Classifieds->Transportation->Cars->Hybrid'),
+    '_8263501' => t('Classifieds->Transportation->Cars->Luxury'),
+    '_8264001' => t('Classifieds->Transportation->Cars->Passenger'),
+    '_8264501' => t('Classifieds->Transportation->Cars->Sports Car'),
+    '20255001' => t('Classifieds->Transportation->Motorcycles'),
+    '20255501' => t('Classifieds->Transportation->RV'),
+    '20256001' => t('Classifieds->Transportation->Skimobile & ATV'),
+    '20256501' => t('Classifieds->Transportation->Trucks'),
+    '_8265001' => t('Classifieds->Transportation->Trucks->Classic'),
+    '_8265501' => t('Classifieds->Transportation->Trucks->Hybrid'),
+    '_8266001' => t('Classifieds->Transportation->Trucks->Minivans & Vans'),
+    '_8266501' => t('Classifieds->Transportation->Trucks->Pickup Trucks'),
+    '_8267001' => t('Classifieds->Transportation->Trucks->SUVs'),
+    '20258501' => t('Entertainment'),
+    '20272001' => t('Entertainment->Arts & Theatre'),
+    '20272501' => t('Entertainment->Arts & Theatre->Kids & Teens'),
+    '20273001' => t('Entertainment->Arts & Theatre->Theatre'),
+    '20273501' => t('Entertainment->Arts & Theatre->Visual'),
+    '20259001' => t('Entertainment->Attractions'),
+    '20259501' => t('Entertainment->Attractions->Museums'),
+    '20260001' => t('Entertainment->Attractions->Parks'),
+    '20271001' => t('Entertainment->Books & Literature'),
+    '20271501' => t('Entertainment->Books & Literature->Kids & Teens'),
+    '20260501' => t('Entertainment->Comics'),
+    '20261001' => t('Entertainment->Dining'),
+    '20261501' => t('Entertainment->Dining->Bars & Clubs Other'),
+    '20262001' => t('Entertainment->Dining->Restaurants'),
+    '20270001' => t('Entertainment->Events Calendar'),
+    '_8268001' => t('Entertainment->Events Calendar->Search'),
+    '_8268501' => t('Entertainment->Events Calendar->Search->Category'),
+    '_8269001' => t('Entertainment->Events Calendar->Search->Organization'),
+    '_8269501' => t('Entertainment->Events Calendar->Search->Venue'),
+    '20262501' => t('Entertainment->Games'),
+    '20263001' => t('Entertainment->Games->Kids & Teens'),
+    '20263501' => t('Entertainment->Horoscope'),
+    '20264001' => t('Entertainment->Lottery'),
+    '20264501' => t('Entertainment->Movies'),
+    '20265001' => t('Entertainment->Movies->Kids & Teens'),
+    '20265501' => t('Entertainment->Movies->Videos'),
+    '20266001' => t('Entertainment->Music'),
+    '20266501' => t('Entertainment->Music->Kids & Teens'),
+    '20267001' => t('Entertainment->Music->Reviews'),
+    '20267501' => t('Entertainment->Night Life'),
+    '20268001' => t('Entertainment->People'),
+    '20268501' => t('Entertainment->People->Celebrity News'),
+    '20269001' => t('Entertainment->Television'),
+    '20269501' => t('Entertainment->Television->Kids & Teens'),
+    '20201001' => t('Home Page'),
+    '20274001' => t('Jobs'),
+    '20274501' => t('Jobs->Search'),
+    '20422501' => t('Lifestyles'),
+    '20423001' => t('Lifestyles->Announcements'),
+    '20423501' => t('Lifestyles->Announcements->Births'),
+    '20424001' => t('Lifestyles->Announcements->Obituaries'),
+    '20424501' => t('Lifestyles->Announcements->Weddings'),
+    '20425001' => t('Lifestyles->College'),
+    '20425501' => t('Lifestyles->Contests'),
+    '20426001' => t('Lifestyles->Faith & Values'),
+    '20426501' => t('Lifestyles->Faith & Values->Meditation'),
+    '20427001' => t('Lifestyles->Faith & Values->Philosophy'),
+    '20427501' => t('Lifestyles->Faith & Values->Religion'),
+    '20428001' => t('Lifestyles->Faith & Values->Spirituality'),
+    '20428501' => t('Lifestyles->Fashion & Style'),
+    '20429001' => t('Lifestyles->Food & Cooking'),
+    '20429501' => t('Lifestyles->Food & Cooking->Recipes'),
+    '20430001' => t('Lifestyles->Food & Cooking->Wine'),
+    '20430501' => t('Lifestyles->Health Med Fit'),
+    '20431001' => t('Lifestyles->Health Med Fit->Fitness'),
+    '20431501' => t('Lifestyles->Health Med Fit->Health'),
+    '_8270001' => t('Lifestyles->Health Med Fit->Health->Nutrition'),
+    '20432001' => t('Lifestyles->Health Med Fit->Medical'),
+    '_8270501' => t('Lifestyles->Health Med Fit->Medical->Alt'),
+    '20432501' => t('Lifestyles->Home & Garden'),
+    '20433001' => t('Lifestyles->Home & Garden->Garden'),
+    '20433501' => t('Lifestyles->Home & Garden->Home'),
+    '20434001' => t('Lifestyles->Leisure'),
+    '20434501' => t('Lifestyles->Pets'),
+    '20435001' => t('Lifestyles->Pets->Adoption'),
+    '20435501' => t('Lifestyles->Pets->Community'),
+    '20436001' => t('Lifestyles->Pets->Lost & Found'),
+    '20436501' => t('Lifestyles->Pets->Services'),
+    '20437001' => t('Lifestyles->Recreation'),
+    '20437501' => t('Lifestyles->Recreation->Aviation'),
+    '20438001' => t('Lifestyles->Recreation->Biking'),
+    '20438501' => t('Lifestyles->Recreation->Climbing'),
+    '20439001' => t('Lifestyles->Recreation->Hiking'),
+    '20439501' => t('Lifestyles->Recreation->Hunting'),
+    '20440001' => t('Lifestyles->Recreation->Kids & Teens'),
+    '20440501' => t('Lifestyles->Recreation->Sightseeing'),
+    '20441001' => t('Lifestyles->Recreation->Skiing'),
+    '20441501' => t('Lifestyles->Recreation->Snowboarding'),
+    '20442001' => t('Lifestyles->Recreation->Water Activities'),
+    '_8271001' => t('Lifestyles->Recreation->Water Activities->Boating'),
+    '_8271501' => t('Lifestyles->Recreation->Water Activities->Boating->Sailing'),
+    '_8272001' => t('Lifestyles->Recreation->Water Activities->Fishing'),
+    '20442501' => t('Lifestyles->Relationships & Special Occasions'),
+    '20443001' => t('Lifestyles->Relationships & Special Occasions->Baby'),
+    '20443501' => t('Lifestyles->Relationships & Special Occasions->Dating'),
+    '20444001' => t('Lifestyles->Relationships & Special Occasions->Kids & Teens'),
+    '20444501' => t('Lifestyles->Relationships & Special Occasions->Parenting'),
+    '20445001' => t('Lifestyles->Relationships & Special Occasions->Pregnancy'),
+    '20445501' => t('Lifestyles->Relationships & Special Occasions->Weddings'),
+    '20275001' => t('News'),
+    '20275501' => t('News->Foreign Language'),
+    '20276001' => t('News->Foreign Language->Spanish'),
+    '20276501' => t('News->Local'),
+    '20277001' => t('News->Local->Education'),
+    '_8272501' => t('News->Local->Education->College'),
+    '_8273001' => t('News->Local->Education->Precollegiate'),
+    '20277501' => t('News->Local->Govt & Politics'),
+    '_8273501' => t('News->Local->Govt & Politics->Elections'),
+    '20278001' => t('News->Local->Military'),
+    '20278501' => t('News->Local->Obituaries'),
+    '20279001' => t('News->National'),
+    '20279501' => t('News->National->Govt & Politics'),
+    '_8274001' => t('News->National->Govt & Politics->Elections'),
+    '20280001' => t('News->National->Obituaries'),
+    '20280501' => t('News->Opinion'),
+    '20281001' => t('News->Opinion->Blogs'),
+    '20281501' => t('News->Opinion->Editorial'),
+    '20282001' => t('News->Opinion->Mailbag'),
+    '20282501' => t('News->Real Estate'),
+    '20283001' => t('News->Science'),
+    '20283501' => t('News->Science->Environment'),
+    '20284001' => t('News->Science->Health Med Fit'),
+    '_8274501' => t('News->Science->Health Med Fit->Fitness'),
+    '_8275001' => t('News->Science->Health Med Fit->Health'),
+    '_8275501' => t('News->Science->Health Med Fit->Medical'),
+    '20284501' => t('News->Science->Tech'),
+    '_8276001' => t('News->Science->Tech->Computers'),
+    '20289001' => t('News->State & Regional'),
+    '20289501' => t('News->State & Regional->Education'),
+    '_8276501' => t('News->State & Regional->Education->College'),
+    '_8277001' => t('News->State & Regional->Education->Precollegiate'),
+    '20290001' => t('News->State & Regional->Govt & Politics'),
+    '_8277501' => t('News->State & Regional->Govt & Politics->Elections'),
+    '_8278001' => t('News->State & Regional->Military'),
+    '_8278501' => t('News->State & Regional->Military->Active'),
+    '_8279001' => t('News->State & Regional->Military->Reserve'),
+    '20290501' => t('News->State & Regional->Obituaries'),
+    '20285001' => t('News->Traffic'),
+    '20285501' => t('News->Transportation'),
+    '20286001' => t('News->Transportation->Aviation'),
+    '20286501' => t('News->Transportation->Cars'),
+    '20287001' => t('News->Weird News'),
+    '20287501' => t('News->World'),
+    '20288001' => t('News->World->Govt & Politics'),
+    '_8279501' => t('News->World->Govt & Politics->Elections'),
+    '_8280001' => t('News->World->Military'),
+    '_8280501' => t('News->World->Military->Active'),
+    '_8281001' => t('News->World->Military->Reserve'),
+    '20288501' => t('News->World->Obituaries'),
+    '20393501' => t('Online'),
+    '20394001' => t('Online->Actions'),
+    '20394501' => t('Online->Actions->Email-a-Friend'),
+    '20395001' => t('Online->Actions->Error'),
+    '20395501' => t('Online->Actions->Submit'),
+    '_8281501' => t('Online->Ask The Expert'),
+    '20396001' => t('Online->Events Calendar'),
+    '20397001' => t('Online->Newspaper Services'),
+    '20397501' => t('Online->Newspaper Services->Store'),
+    '20398001' => t('Online->Other CGI'),
+    '_8283001' => t('Online->OtherCGI->General Response'),
+    '_8283501' => t('Online->OtherCGI->General Search'),
+    '_8284001' => t('Online->OtherCGI->User Submissions'),
+    '_8284501' => t('Online->OtherCGI->User Submissions->Classads'),
+    '_8285001' => t('Online->OtherCGI->User Submissions->Comments'),
+    '_8285501' => t('Online->OtherCGI->User Submissions->Media'),
+    '_8286001' => t('Online->OtherCGI->User Submissions->Media->Photo'),
+    '_8286501' => t('Online->OtherCGI->User Submissions->Media->Video'),
+    '_8287001' => t('Online->OtherCGI->User Submissions->Profiles'),
+    '20398501' => t('Online->Registration'),
+    '20399001' => t('Online->Registration->Log In'),
+    '20399501' => t('Online->Registration->Log Out'),
+    '20400001' => t('Online->Registration->Personalize'),
+    '20400501' => t('Online->Registration->Sign-Up'),
+    '20401001' => t('Online->Search'),
+    '20401501' => t('Online->Search->Advanced Search'),
+    '20402001' => t('Online->Search->Results'),
+    '20402501' => t('Online->Site Information'),
+    '20403001' => t('Online->Site Information->Advertising'),
+    '_8287501' => t('Online->Site Information->Advertising->RateCard'),
+    '20403501' => t('Online->Site Information->Circulation'),
+    '20404001' => t('Online->Site Information->Contacts'),
+    '20404501' => t('Online->Site Information->FAQ'),
+    '20405001' => t('Online->Site Information->Feedback'),
+    '20405501' => t('Online->System Response'),
+    '20406001' => t('Online->System Response->Error'),
+    '20406501' => t('Online->System Response->Success'),
+    '20291001' => t('Real Estate'),
+    '20291501' => t('Real Estate->Commercial'),
+    '20292001' => t('Real Estate->Commercial->Land'),
+    '20292501' => t('Real Estate->Commercial->Lease'),
+    '20293001' => t('Real Estate->Commercial->Manufactured Homes'),
+    '20293501' => t('Real Estate->Commercial->Rent'),
+    '20294001' => t('Real Estate->Commercial->Time Share'),
+    '20294501' => t('Real Estate->New Construction'),
+    '20295001' => t('Real Estate->New Construction->Land'),
+    '20295501' => t('Real Estate->New Construction->Lease'),
+    '20296001' => t('Real Estate->New Construction->Rent'),
+    '20296501' => t('Real Estate->New Construction->Time Share'),
+    '20297001' => t('Real Estate->Residential'),
+    '20297501' => t('Real Estate->Residential->Land'),
+    '20298001' => t('Real Estate->Residential->Lease'),
+    '20298501' => t('Real Estate->Residential->Manufactured Homes'),
+    '20299001' => t('Real Estate->Residential->Rent'),
+    '20299501' => t('Real Estate->Residential->Time Share'),
+    '20300001' => t('Real Estate->Services'),
+    '20300501' => t('Real Estate->Services->Financing'),
+    '20301001' => t('Real Estate->Services->Home Inspector, Surveyor'),
+    '20301501' => t('Real Estate->Services->Pest Control'),
+    '20302001' => t('Real Estate->Services->Realtor'),
+    '20302501' => t('Real Estate->Vacation'),
+    '20303001' => t('Real Estate->Vacation->Lease, Rental & Time Share'),
+    '20303501' => t('Shopping'),
+    '20304001' => t('Shopping->Announcements'),
+    '20304501' => t('Shopping->Coupons'),
+    '20305001' => t('Shopping->Directories'),
+    '20305501' => t('Shopping->Directories->White Pages'),
+    '20306001' => t('Shopping->Directories->Yellow Pages'),
+    '20306501' => t('Shopping->Education'),
+    '20335001' => t('Shopping->Food & Dining'),
+    '20335501' => t('Shopping->Food & Dining->Bars & Clubs Other'),
+    '20336001' => t('Shopping->Food & Dining->Restaurants'),
+    '20307001' => t('Shopping->Merchandise'),
+    '20307501' => t('Shopping->Merchandise->Antiques'),
+    '20308001' => t('Shopping->Merchandise->Apparel'),
+    '20308501' => t('Shopping->Merchandise->Baby'),
+    '20309001' => t('Shopping->Merchandise->Books & Magazines'),
+    '20309501' => t('Shopping->Merchandise->Camera & Photo'),
+    '20310001' => t('Shopping->Merchandise->Computers & Software'),
+    '20310501' => t('Shopping->Merchandise->Department Store'),
+    '20311001' => t('Shopping->Merchandise->Electronics'),
+    '20311501' => t('Shopping->Merchandise->Entertainment & Party'),
+    '20312001' => t('Shopping->Merchandise->Flowers & Gifts'),
+    '20312501' => t('Shopping->Merchandise->Furniture & Furnishings'),
+    '20313001' => t('Shopping->Merchandise->Health & Beauty'),
+    '20313501' => t('Shopping->Merchandise->Health Med Fit'),
+    '_8288501' => t('Shopping->Merchandise->Health Med Fit->Fitness'),
+    '_8289001' => t('Shopping->Merchandise->Health Med Fit->Health'),
+    '_8289501' => t('Shopping->Merchandise->Health Med Fit->Medical'),
+    '20317501' => t('Shopping->Merchandise->Home & Garden'),
+    '20314001' => t('Shopping->Merchandise->Jewelry'),
+    '20314501' => t('Shopping->Merchandise->Kids & Teens'),
+    '20315001' => t('Shopping->Merchandise->Movies & Music'),
+    '20315501' => t('Shopping->Merchandise->Office Products'),
+    '20316001' => t('Shopping->Merchandise->Sports & Recreation'),
+    '20316501' => t('Shopping->Merchandise->Tech'),
+    '_8290001' => t('Shopping->Merchandise->Tech->Computers'),
+    '_8290501' => t('Shopping->Merchandise->Tech->Electronics'),
+    '20317001' => t('Shopping->Merchandise->Toys, Games & Video Games'),
+    '_8291001' => t('Shopping->Other'),
+    '20318001' => t('Shopping->Pets'),
+    '20318501' => t('Shopping->Real Estate'),
+    '20319001' => t('Shopping->Real Estate->Apartments'),
+    '_8291501' => t('Shopping->Real Estate->Apartments->Rentals'),
+    '20319501' => t('Shopping->Real Estate->Commercial'),
+    '_8292001' => t('Shopping->Real Estate->Commercial->New'),
+    '_8292501' => t('Shopping->Real Estate->Commercial->Rentals'),
+    '_8293001' => t('Shopping->Real Estate->Commercial->Resale'),
+    '20320001' => t('Shopping->Real Estate->Home'),
+    '_8293501' => t('Shopping->Real Estate->Home->Condos'),
+    '_8294001' => t('Shopping->Real Estate->Home->Condos->New'),
+    '_8294501' => t('Shopping->Real Estate->Home->Condos->Rentals'),
+    '_8295001' => t('Shopping->Real Estate->Home->Condos->Resale'),
+    '_8295501' => t('Shopping->Real Estate->Home->Retirement'),
+    '_8296001' => t('Shopping->Real Estate->Home->Single Family'),
+    '_8296501' => t('Shopping->Real Estate->Home->Single Family->New'),
+    '_8297001' => t('Shopping->Real Estate->Home->Single Family->Rentals'),
+    '_8297501' => t('Shopping->Real Estate->Home->Single Family->Resale'),
+    '20320501' => t('Shopping->Real Estate->Services'),
+    '20321001' => t('Shopping->Real Estate->Time Share'),
+    '20321501' => t('Shopping->Real Estate->Vacation Rentals'),
+    '20333501' => t('Shopping->Search'),
+    '20334001' => t('Shopping->Search->Form'),
+    '20334501' => t('Shopping->Search->Results'),
+    '20322001' => t('Shopping->Services'),
+    '20322501' => t('Shopping->Services->Baby'),
+    '20323001' => t('Shopping->Services->Business'),
+    '_8298001' => t('Shopping->Services->Business->Accounting'),
+    '20323501' => t('Shopping->Services->Cleaning'),
+    '20324001' => t('Shopping->Services->ElderCare'),
+    '20324501' => t('Shopping->Services->Health Med Fit'),
+    '_8298501' => t('Shopping->Services->Health Med Fit->Fitness'),
+    '_8299001' => t('Shopping->Services->Health Med Fit->Health'),
+    '_8299501' => t('Shopping->Services->Health Med Fit->Medical'),
+    '20325001' => t('Shopping->Services->Home'),
+    '20325501' => t('Shopping->Services->Kids & Teens'),
+    '20326001' => t('Shopping->Services->Personal Finance'),
+    '20326501' => t('Shopping->Transportation'),
+    '20327001' => t('Shopping->Transportation->Aviation'),
+    '20327501' => t('Shopping->Transportation->Boating'),
+    '20328001' => t('Shopping->Transportation->Car or Auto Care & Repair'),
+    '20328501' => t('Shopping->Transportation->Cars'),
+    '20329001' => t('Shopping->Transportation->Motorcycles'),
+    '20329501' => t('Shopping->Transportation->RV'),
+    '20330001' => t('Shopping->Transportation->Skimobile & ATV'),
+    '20330501' => t('Shopping->Transportation->Trucks'),
+    '20331001' => t('Shopping->Travel'),
+    '20331501' => t('Shopping->Travel->International'),
+    '20332001' => t('Shopping->Travel->Local'),
+    '20332501' => t('Shopping->Travel->National'),
+    '20333001' => t('Shopping->Travel->Regional'),
+    '20336501' => t('Social Networking'),
+    '20337001' => t('Social Networking->Blogs'),
+    '20337501' => t('Social Networking->Chat'),
+    '20338001' => t('Social Networking->Forum'),
+    '20338501' => t('Social Networking->Personal Page'),
+    '20339001' => t('Social Networking->Photos & Videos'),
+    '20339501' => t('Special Section'),
+    '20340001' => t('Special Section->Baseball'),
+    '20340501' => t('Special Section->Basketball'),
+    '20341001' => t('Special Section->Family Relationships'),
+    '20341501' => t('Special Section->Family Relationships->Baby'),
+    '20342001' => t('Special Section->Family Relationships->Kids & Teens'),
+    '20342501' => t('Special Section->Family Relationships->Weddings'),
+    '20343001' => t('Special Section->Football'),
+    '20343501' => t('Special Section->Golf'),
+    '20351001' => t('Special Section->Health Med Fit'),
+    '20351501' => t('Special Section->Health Med Fit->Fitness'),
+    '20352001' => t('Special Section->Health Med Fit->Health'),
+    '20352501' => t('Special Section->Health Med Fit->Medical'),
+    '20344001' => t('Special Section->Hockey'),
+    '20344501' => t('Special Section->Jobs'),
+    '20345001' => t('Special Section->Local'),
+    '20345501' => t('Special Section->Local->Education'),
+    '20346001' => t('Special Section->Local->Visitors Guide'),
+    '20346501' => t('Special Section->Merchandise'),
+    '20353001' => t('Special Section->News'),
+    '20353501' => t('Special Section->News->History & Events'),
+    '20347001' => t('Special Section->Olympics'),
+    '20347501' => t('Special Section->Other'),
+    '20348001' => t('Special Section->Pets'),
+    '20348501' => t('Special Section->Real Estate'),
+    '20349001' => t('Special Section->Recreation'),
+    '20349501' => t('Special Section->Recreation->Water Activities'),
+    '20350001' => t('Special Section->Services'),
+    '20350501' => t('Special Section->Transportation'),
+    '20354001' => t('Sports'),
+    '20354501' => t('Sports->Baseball'),
+    '20355001' => t('Sports->Baseball->Amateur'),
+    '20355501' => t('Sports->Baseball->College'),
+    '20356501' => t('Sports->Baseball->High School & Prep'),
+    '20356001' => t('Sports->Baseball->Professional'),
+    '_8301001' => t('Sports->Baseball->Professional->Minor'),
+    '_8301501' => t('Sports->Baseball->Professional->Minor->Appalachian League'),
+    '_8302001' => t('Sports->Baseball->Professional->Minor->Arizona League'),
+    '_8302501' => t('Sports->Baseball->Professional->Minor->California League'),
+    '_8303001' => t('Sports->Baseball->Professional->Minor->Carolina League'),
+    '_8303501' => t('Sports->Baseball->Professional->Minor->Dominican Summer League'),
+    '_8304001' => t('Sports->Baseball->Professional->Minor->Eastern League'),
+    '_8304501' => t('Sports->Baseball->Professional->Minor->Florida State League'),
+    '_8305001' => t('Sports->Baseball->Professional->Minor->Gulf Coast League'),
+    '_8305501' => t('Sports->Baseball->Professional->Minor->International League'),
+    '_8306001' => t('Sports->Baseball->Professional->Minor->Mexican League'),
+    '_8306501' => t('Sports->Baseball->Professional->Minor->Midwest League'),
+    '_8307001' => t('Sports->Baseball->Professional->Minor->New York-Penn League'),
+    '_8307501' => t('Sports->Baseball->Professional->Minor->Northwest League'),
+    '_8308001' => t('Sports->Baseball->Professional->Minor->PacCoast League'),
+    '_8308501' => t('Sports->Baseball->Professional->Minor->Pioneer League'),
+    '_8309001' => t('Sports->Baseball->Professional->Minor->S AtlanticLeague'),
+    '_8309501' => t('Sports->Baseball->Professional->Minor->Southern League'),
+    '_8310001' => t('Sports->Baseball->Professional->Minor->Texas League'),
+    '_8310501' => t('Sports->Baseball->Professional->Minor->Venezuelan Summer League'),
+    '_8311001' => t('Sports->Baseball->Professional->MLB'),
+    '20357001' => t('Sports->Basketball'),
+    '20357501' => t('Sports->Basketball->Amateur'),
+    '_8311501' => t('Sports->Basketball->Amateur->Kids & Teens'),
+    '20358001' => t('Sports->Basketball->College'),
+    '_8312001' => t('Sports->Basketball->College->ACC'),
+    '_8312501' => t('Sports->Basketball->College->Big 10'),
+    '_8313001' => t('Sports->Basketball->College->Big 12'),
+    '_8313501' => t('Sports->Basketball->College->Big East'),
+    '_8314001' => t('Sports->Basketball->College->Big Sky'),
+    '_8314501' => t('Sports->Basketball->College->Big South'),
+    '_8315001' => t('Sports->Basketball->College->Big West'),
+    '_8315501' => t('Sports->Basketball->College->MEAC'),
+    '_8316001' => t('Sports->Basketball->College->MWC'),
+    '_8316501' => t('Sports->Basketball->College->PAC 10'),
+    '_8317001' => t('Sports->Basketball->College->SEC'),
+    '_8317501' => t('Sports->Basketball->College->Southern'),
+    '_8318001' => t('Sports->Basketball->College->USA'),
+    '_8318501' => t('Sports->Basketball->College->WAC'),
+    '_8319001' => t('Sports->Basketball->College->WCC'),
+    '20359001' => t('Sports->Basketball->High School & Prep'),
+    '20358501' => t('Sports->Basketball->Professional'),
+    '_8319501' => t('Sports->Basketball->Professional->Minor'),
+    '_8320001' => t('Sports->Basketball->Professional->Minor->ABA'),
+    '_8320501' => t('Sports->Basketball->Professional->Minor->CBA'),
+    '_8321001' => t('Sports->Basketball->Professional->Minor->EBA'),
+    '_8321501' => t('Sports->Basketball->Professional->Minor->IBL'),
+    '_8322001' => t('Sports->Basketball->Professional->Minor->NABL'),
+    '_8322501' => t('Sports->Basketball->Professional->Minor->NBADL'),
+    '_8323001' => t('Sports->Basketball->Professional->Minor->PBL'),
+    '_8323501' => t('Sports->Basketball->Professional->Minor->UBL'),
+    '_8324001' => t('Sports->Basketball->Professional->Minor->USBL'),
+    '_8324501' => t('Sports->Basketball->Professional->Minor->WBA'),
+    '_8325001' => t('Sports->Basketball->Professional->NBA'),
+    '_8325501' => t('Sports->Basketball->Professional->WNBA'),
+    '20359501' => t('Sports->Boxing'),
+    '20360001' => t('Sports->Boxing->Amateur'),
+    '_8326001' => t('Sports->Boxing->Amateur->Kids & Teens'),
+    '20360501' => t('Sports->Boxing->Pro'),
+    '20361001' => t('Sports->College'),
+    '20361501' => t('Sports->College->College'),
+    '20362001' => t('Sports->Equestrian'),
+    '20362501' => t('Sports->Equestrian->Polo'),
+    '20363001' => t('Sports->Equestrian->Racing'),
+    '20363501' => t('Sports->Equestrian->Rodeo'),
+    '20364001' => t('Sports->Football'),
+    '20364501' => t('Sports->Football->Amateur'),
+    '_8326501' => t('Sports->Football->Amateur->Kids & Teens'),
+    '20365001' => t('Sports->Football->College'),
+    '_8327001' => t('Sports->Football->College->ACC'),
+    '_8327501' => t('Sports->Football->College->Big 10'),
+    '_8328001' => t('Sports->Football->College->Big 12'),
+    '_8328501' => t('Sports->Football->College->Big Sky'),
+    '_8329001' => t('Sports->Football->College->Big South'),
+    '_8329501' => t('Sports->Football->College->CIAA'),
+    '_8330001' => t('Sports->Football->College->Great West'),
+    '_8330501' => t('Sports->Football->College->MEAC'),
+    '_8331001' => t('Sports->Football->College->Northwest'),
+    '_8331501' => t('Sports->Football->College->PAC 10'),
+    '_8332001' => t('Sports->Football->College->SEC'),
+    '_8332501' => t('Sports->Football->College->South Atlantic'),
+    '_8333001' => t('Sports->Football->College->Southern'),
+    '_8333501' => t('Sports->Football->College->USA'),
+    '_8334001' => t('Sports->Football->College->WAC'),
+    '20366501' => t('Sports->Football->High School & Prep'),
+    '20365501' => t('Sports->Football->Minors'),
+    '20366001' => t('Sports->Football->Professional'),
+    '_8334501' => t('Sports->Football->Professional->Arena'),
+    '_8335001' => t('Sports->Football->Professional->NFL'),
+    '20391001' => t('Sports->Golf'),
+    '20391501' => t('Sports->Golf->Amateur'),
+    '_8335501' => t('Sports->Golf->Amateur->Kids & Teens'),
+    '20392001' => t('Sports->Golf->College'),
+    '20392501' => t('Sports->Golf->High School & Prep'),
+    '20393001' => t('Sports->Golf->Professional'),
+    '_8336001' => t('Sports->Golf->Professional->LPGA'),
+    '_8336501' => t('Sports->Golf->Professional->PGA'),
+    '20367001' => t('Sports->High School'),
+    '20367501' => t('Sports->Hockey'),
+    '20368001' => t('Sports->Hockey->Amateur'),
+    '_8337001' => t('Sports->Hockey->Amateur->Kids & Teens'),
+    '20368501' => t('Sports->Hockey->College'),
+    '20369501' => t('Sports->Hockey->High School & Prep'),
+    '20369001' => t('Sports->Hockey->Professional'),
+    '_8337501' => t('Sports->Hockey->Professional->International'),
+    '_8338001' => t('Sports->Hockey->Professional->Minor'),
+    '_8338501' => t('Sports->Hockey->Professional->Minor->AHL'),
+    '_8339001' => t('Sports->Hockey->Professional->Minor->CHL'),
+    '_8339501' => t('Sports->Hockey->Professional->Minor->ECHL'),
+    '_8340001' => t('Sports->Hockey->Professional->Minor->EPHL'),
+    '_8340501' => t('Sports->Hockey->Professional->Minor->IHL'),
+    '_8341001' => t('Sports->Hockey->Professional->Minor->MAHL'),
+    '_8341501' => t('Sports->Hockey->Professional->Minor->MWHL'),
+    '_8342001' => t('Sports->Hockey->Professional->Minor->SPHL'),
+    '_8342501' => t('Sports->Hockey->Professional->NHL'),
+    '20370001' => t('Sports->Motor Sports'),
+    '20370501' => t('Sports->Motor Sports->Busch'),
+    '20371001' => t('Sports->Motor Sports->Cart'),
+    '20371501' => t('Sports->Motor Sports->Craftsman Truck'),
+    '20372001' => t('Sports->Motor Sports->Formula 1'),
+    '20372501' => t('Sports->Motor Sports->Nextel'),
+    '20373001' => t('Sports->Motor Sports->Open Wheel'),
+    '20373501' => t('Sports->Olympics'),
+    '20374001' => t('Sports->Olympics->Summer Games'),
+    '20374501' => t('Sports->Olympics->Winter Games'),
+    '20375001' => t('Sports->Other'),
+    '20375501' => t('Sports->Other->Amateur'),
+    '_8343001' => t('Sports->Other->Amateur->Kids & Teens'),
+    '20376001' => t('Sports->Other->College'),
+    '20377501' => t('Sports->Other->High School & Prep'),
+    '20376501' => t('Sports->Other->Kids & Teens'),
+    '20377001' => t('Sports->Other->Professional'),
+    '_8343501' => t('Sports->Other->Professional->Extreme'),
+    '20378001' => t('Sports->Recreation'),
+    '20378501' => t('Sports->Recreation->Biking'),
+    '20379001' => t('Sports->Recreation->Kids & Teens'),
+    '20379501' => t('Sports->Recreation->Skiing'),
+    '20380001' => t('Sports->Recreation->Snowboarding'),
+    '_8344001' => t('Sports->Recreation->Water Activities'),
+    '_8344501' => t('Sports->Recreation->Water Activities->Boating'),
+    '_8345001' => t('Sports->Recreation->Water Activities->Boating->Sailing'),
+    '_8345501' => t('Sports->Recreation->Water Activities->Fishing'),
+    '20380501' => t('Sports->Running'),
+    '20381001' => t('Sports->Running->Marathon'),
+    '20381501' => t('Sports->Running->Track'),
+    '20382001' => t('Sports->Soccer'),
+    '20382501' => t('Sports->Soccer->Amateur'),
+    '_8346001' => t('Sports->Soccer->Amateur->Kids & Teens'),
+    '20383001' => t('Sports->Soccer->College'),
+    '20384001' => t('Sports->Soccer->High School & Prep'),
+    '20383501' => t('Sports->Soccer->Professional'),
+    '_8346501' => t('Sports->Soccer->Professional->International'),
+    '_8347001' => t('Sports->Soccer->Professional->Minor'),
+    '_8347501' => t('Sports->Soccer->Professional->Minor->NPSL'),
+    '_8348001' => t('Sports->Soccer->Professional->Minor->PCSL'),
+    '_8348501' => t('Sports->Soccer->Professional->Minor->USL1'),
+    '_8349001' => t('Sports->Soccer->Professional->Minor->USL2'),
+    '_8349501' => t('Sports->Soccer->Professional->Minor->USLPDL'),
+    '_8350001' => t('Sports->Soccer->Professional->MLS'),
+    '20384501' => t('Sports->Swimming & Diving'),
+    '20385001' => t('Sports->Swimming & Diving->Amateur'),
+    '20385501' => t('Sports->Swimming & Diving->College'),
+    '20386001' => t('Sports->Swimming & Diving->High School'),
+    '20386501' => t('Sports->Swimming & Diving->Kids & Teens'),
+    '20387001' => t('Sports->Tennis'),
+    '20387501' => t('Sports->Tennis->Amateur'),
+    '_8350501' => t('Sports->Tennis->Amateur->Kids & Teens'),
+    '20388001' => t('Sports->Tennis->College'),
+    '20388501' => t('Sports->Tennis->High School & Prep'),
+    '20389501' => t('Sports->Tennis->Professional'),
+    '_8352001' => t('Sports->Tennis->Professional->International'),
+    '20390501' => t('Sports->Track & Field'),
+    '20407001' => t('Transportation'),
+    '20407501' => t('Transportation->Aviation'),
+    '20408001' => t('Transportation->Boats'),
+    '20408501' => t('Transportation->Recreation Vehicles'),
+    '20409001' => t('Transportation->Recreation Vehicles->RV'),
+    '20409501' => t('Transportation->Recreation Vehicles->Skimobile & ATV'),
+    '20410001' => t('Travel'),
+    '20410501' => t('Travel->Attractions'),
+    '20411001' => t('Travel->Attractions->Theme Park'),
+    '20411501' => t('Travel->Golf'),
+    '20412001' => t('Travel->International'),
+    '20412501' => t('Travel->International->Business'),
+    '20413001' => t('Travel->International->Leisure'),
+    '_8352501' => t('Travel->International->Leisure->Cruise'),
+    '20413501' => t('Travel->Local'),
+    '20414001' => t('Travel->Local->Business'),
+    '20414501' => t('Travel->Local->Leisure'),
+    '_8353001' => t('Travel->Local->Leisure->Cruise'),
+    '20415001' => t('Travel->National'),
+    '20415501' => t('Travel->National->Business'),
+    '20416001' => t('Travel->National->Leisure'),
+    '_8353501' => t('Travel->National->Leisure->Cruise'),
+    '_8354001' => t('Travel->Outdoors'),
+    '_8354501' => t('Travel->Outdoors->Fishing'),
+    '_8355001' => t('Travel->Outdoors->Golf'),
+    '_8355501' => t('Travel->Outdoors->Hunting'),
+    '_8356001' => t('Travel->Outdoors->Skiing'),
+    '20416501' => t('Weather'),
+    '20417001' => t('Weather->Cam'),
+    '20417501' => t('Weather->Current Conditions'),
+    '20418001' => t('Weather->Forecasts'),
+    '20418501' => t('Weather->Pollen'),
+    '20419001' => t('Weather->Radar'),
+    '20419501' => t('Weather->Storm Center'),
+    '20420001' => t('Weather->Storm Center->Floods'),
+    '20420501' => t('Weather->Storm Center->Hurricanes'),
+    '20421001' => t('Weather->Storm Center->Tornados'),
+    '20421501' => t('Weather->Storm Center->Warnings'),
+    '20422001' => t('Weather->Tides'),
+  );
+  return $options;
+}
+
+function apt_plugin_get_topic($option_id) {
+  $options = apt_plugin_topic_options();
+  return $options[$option_id];
+}

@@ -1,0 +1,148 @@
+<?php
+/******************************************
+* Context Ad Serving and Analytics
+* Database Install File
+* Version: 6.x-1.0.0
+********************************************/
+
+/**
+* Major Changes this Version: this new version includes a major structure change to the database.
+* this change includes the addition of two tables to help store path exceptions along side basic
+* term mappings and also prevents duplication of data and empty sets.
+* 
+* An upgrade path has been added to alter the db tables of a previous CMF install to match the 
+* CASAA schema and disable the CMF.module file to prevent any conflictions
+* 
+* If no previous CMF install, go ahead and install a fresh CASAA schema.
+*/
+
+/**
+* implementation of hook_schema()
+*/
+
+function casaa_schema() {
+	$schema = array();
+	
+	$schema['casaa_context_mapper'] = array(
+		'description' => t('Base table for the casaa the stores the main data for mappings and exceptions'),
+		'fields' => array(
+			'aid' => array(
+				'description' => t('primary id for the casaa tables'),
+				'type' => 'serial',
+				'not null' => TRUE,
+			),
+			'casaa_type' => array(
+				'description' => t('Indicates the plug-in'),
+				'type' => 'varchar',
+				'length' => '99',
+				'not null' => TRUE,
+			),
+			'casaa_value' => array(
+				'description' => t('The data value for the setting'),
+				'type' => 'varchar',
+				'length' => '1000',
+				'not null' => TRUE,
+			),
+			'casaa_weight' => array(
+				'description' => t('weight to be applied to term values'),
+				'type' => 'int',
+				'not null' => TRUE,
+			),
+		),
+		'indexes' => array(
+			'casaa_type' => array('casaa_type'),
+		),
+		'primary key' => array('aid'),
+	);
+	$schema['casaa_paths'] = array(
+		'description' => t('relative table to mapper with keys connecting paths to data values'),
+		'fields' => array(
+			'aid' => array(
+				'description' => t('primary index id for the table. is the same as the primary key of the mapper table'),
+				'type' => 'int',
+				'unsigned' => TRUE,
+				'not null' => TRUE,
+			),
+			'casaa_path' => array(
+				'description' => t('The url path for the path exception'),
+				'type' => 'varchar',
+				'length' => '99',
+				'not null' => TRUE,
+			),
+		),
+		'primary key' => array('aid'),
+	);
+	$schema['casaa_terms'] = array(
+		'description' => t('relative table to the mapper with keys connecting tax term ids to data values.'),
+		'fields' => array(
+			'aid' => array(
+				'description' => t('primary index id for the table. is the same as the primary key of the mapper table'),
+				'type' => 'int',
+				'unsigned' => TRUE,
+				'not null' => TRUE,
+			),
+			'casaa_tid' => array(
+				'description' => t('the id for the relative tax term'),
+				'type' => 'int',
+				'unsigned' => TRUE,
+				'not null' => TRUE,
+			),
+		),
+		'primary key' => array('aid'),
+	);	
+	return $schema;
+}
+
+/**
+ * Install the defined schema.
+ * If there are any tables from a current install of the CMF module alter them to the current schema
+ * to help retain data from the previous install. Also, make sure that the cmf.module is disabled to 
+ * prevent errors from occuring on the site. 
+ * 
+ **/
+function casaa_install() {
+	//check for any existing CMF tables and update them to CASAA schema
+	if (db_table_exists('cmf_context_mapper') && db_table_exists('cmf_terms') && db_table_exists('cmf_paths')) {
+		$upgrade_successful = casaa_upgrade_cmf_db();
+		if ($upgrade_successful) {
+			drupal_set_message('CASAA will not be fully operational until you move the plug-ins folder from the CMF folder to the CASAA folder.', 'warning');
+			drupal_set_message('CMF Successfully Upgraded to CASAA');
+		}
+		else {
+			drupal_set_message('Unabled to Upgrade CMF to CASAA', 'error');
+		}
+	}
+	else {
+		drupal_install_schema('casaa');
+	}
+}
+
+/**
+ * Alter the existing CMF schema to comply with the new standard while keeping existing data
+ * @return $upgrade_successful - bool values indicating the success of the upgrade from CMF to CASAA 
+ **/
+function casaa_upgrade_cmf_db() {
+	//if the cmf module is enabled disable it
+	if (db_query("UPDATE {system} SET status=0 WHERE name='cmf' and type='module'")) {
+		drupal_set_message('The CMF module has been disabled');
+	}
+	else {
+		drupal_set_message('Unable to disble CMF.module Quitting Upgrade', 'error');
+		return FALSE;
+	}
+	
+	// use this function to alter the table names and retain old data: db_rename_table(&$ret, $table, $new_name);
+	db_rename_table($ret = array(), 'cmf_context_mapper', 'casaa_context_mapper');
+		db_query("ALTER TABLE {casaa_context_mapper} CHANGE cmf_type casaa_type varchar(99)");
+		db_query("ALTER TABLE {casaa_context_mapper} CHANGE cmf_value casaa_value varchar(300)");
+		db_query("ALTER TABLE {casaa_context_mapper} CHANGE cmf_weight casaa_weight int");
+	db_rename_table($ret = array(), 'cmf_terms', 'casaa_terms');
+		db_query("ALTER TABLE {casaa_terms} CHANGE cmf_tid casaa_tid int");
+	db_rename_table($ret = array(), 'cmf_paths', 'casaa_paths');
+		db_query("ALTER TABLE {casaa_paths} CHANGE cmf_path casaa_path varchar(99)");
+	return TRUE;
+}
+
+function casaa_uninstall() {
+	drupal_uninstall_schema('casaa');
+}

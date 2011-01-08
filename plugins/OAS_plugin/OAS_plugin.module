@@ -1,0 +1,168 @@
+<?php
+/********************************
+* OAS plugin for Context Management Framework
+* version: 6.x-dev
+* Author: Geoff Maxey
+*
+* Interacts with the CMF to output OAS ad-serving script
+*
+*********************************/
+
+
+
+/**
+* Implementation of hook_global_settings_form
+*
+* - the form_alter has been removed
+*/
+function OAS_plugin_global_settings_form() {
+	$form = array();
+	
+	$form['OAS_plugin_settings'] = array(
+		'#type' => 'fieldset',
+		'#title' => t('OAS Plugin Global Settings'),
+	);
+		$form['OAS_plugin_settings']['OAS_plugin_enabled'] = array(
+			'#type' => 'checkbox',
+			'#title' => t('Enabled'),
+			'#default_value' => variable_get('OAS_plugin_enabled', 0),
+		);
+		$form['OAS_plugin_settings']['OAS_url'] = array(
+			'#type' => 'textfield',
+			'#title' => t('Ad server URL'),
+			'#description' => t('The URL that points to the Ad server.'),
+			'#size' => 30,
+			'#maxlength' => 80,
+			'#default_value' => variable_get('OAS_url', ''),
+		);
+		$form['OAS_plugin_settings']['OAS_sitepage'] = array(
+			'#type' => 'textfield',
+			'#title' => t('OAS Sitepage Domain'),
+			'#description' => t('The domain to be set for the sitepage variable'),
+			'#size' => 30,
+			'#maxlength' => 80,
+			'#default_value' => variable_get('OAS_sitepage', ''),
+		);
+		$form['OAS_plugin_settings']['OAS_default_sitepage'] = array(
+			'#type' => 'textfield',
+			'#title' => t('Default Site Page'),
+			'#description' => t('The default setting for the OAS_sitepage variable.'),
+			'#size' => 30,
+			'#maxlength' => 60,
+			'#default_value' => variable_get('OAS_default_sitepage', ''),
+		);
+		$form['OAS_plugin_settings']['OAS_default_listpos'] = array(
+			'#type' => 'textfield',
+			'#title' => t('Default List Postions'),
+			'#description' => t('This is the default list postions.'),
+			'#default_value' => variable_get('OAS_default_listpos', ''),
+		);
+	
+	return $form;
+}
+
+
+/**
+* Implementation of hook_mapping_settings_form
+*
+* @changed: term weight is now handled by the core module. 
+*/
+function OAS_plugin_mapping_settings_form($default_values = NULL) {
+	$form = array();
+	
+	$default_values = unserialize($default_values);
+	$form['OAS_plugin'] = array(
+		'#type'  => 'fieldset',
+		'#title' => t('OAS Plugin Settings'),
+	);
+		$form['OAS_plugin']['OAS_plugin_sitepage'] = array(
+			'#type' => 'textfield',
+			'#title' => t('OAS Sitepage'),
+			'#description' => t('The section for your sitepage var. Ex: "/home" you do not need to include the domain.'),
+			'#default_value' => $default_values['OAS_sitepage'],
+			'#size' => 15,
+			'#maxlength' => 40,
+		);
+		$form['OAS_plugin']['OAS_plugin_sitepos'] = array(
+			'#type' => 'textfield',
+			'#title' => t('OAS List Position'),
+			'#description' => t('The List position var for your ad positions ex: "Top,Middle,Bottom"'),
+			'#size' => 30,
+			'#maxlength' => 50,
+			'#default_value' => $default_values['OAS_listpos'],
+		);
+		
+	return $form;
+}
+
+/**
+* Implemtation of hook_mapping_settings_submit_handler()
+* @return $adjusted_value a serialize array of plugin specific values
+*/
+function OAS_plugin_mapping_settings_submit_handler($form_values) {
+	$adjusted_value = serialize(array('OAS_sitepage' => $form_values['OAS_plugin_sitepage'], 'OAS_listpos' => $form_values['OAS_plugin_sitepos']));
+	return $adjusted_value;	
+}
+
+function OAS_plugin_table_display_data($my_values) {
+	$my_values = unserialize($my_values);
+	
+	$my_display = $my_values['OAS_sitepage'] . "  |  " . $my_values['OAS_listpos']	;
+	
+	return $my_display;
+}
+
+
+/**
+*	implementation of the cmf_hook_output()
+* @todo adjust for proper data being passed instead of this crazy string handling
+*/
+
+function OAS_plugin_output($script_values) {
+	global $script_written;
+	//stuff('OAS plugin is processing...');
+	//var_dump($script_values);
+	$script_values = unserialize($script_values);
+	if (!$script_values) {
+		$script_values['OAS_sitepage'] = variable_get('OAS_default_sitepage', '');
+		$script_values['OAS_listpos'] = variable_get('OAS_default_listpos', '');
+	}
+	//var_dump($script_values);
+	if (!$script_written['OAS_plugin']) {
+		$output = "OAS_url = 'http://" . variable_get('OAS_url', '') . "';
+				//OAS_sitepage = 'window.location.hostname + window.location.pathname;
+				OAS_sitepage = '" . variable_get('OAS_sitepage', '') . $script_values['OAS_sitepage'] . "';
+				OAS_listpos = '" . $script_values['OAS_listpos'] . "';
+				OAS_query = '';
+				OAS_target = '';
+				//end of configuration
+				OAS_version = 10;
+				OAS_rn = '001234567890'; OAS_rns = '1234567890';
+				OAS_rn = new String (Math.random()); OAS_rns = OAS_rn.substring(2, 11);
+				function OAS_NORMAL (pos) {
+				document.write('<A HREF=\"' + OAS_url + 'click_nx.ads/' + OAS_sitepage + '/1' + OAS_rns + '@' + OAS_listpos + '!' + pos + '?' + OAS_query + '\" TARGET=' + OAS_target + '>');
+				document.write('<IMG SRC=\"' + OAS_url + 'adstream_nx.ads/' + OAS_sitepage + '/1' + OAS_rns + '@' + OAS_listpos + '!' + pos + '?' + OAS_query + '\" Border=1></A>');
+				}
+
+
+				OAS_version = 11;
+				if (navigator.userAgent.indexOf('Mozilla/3') != -1 || navigator.userAgent.indexOf('Mozilla/4.0 WebTV') != -1)
+				OAS_version = 10;
+				if (OAS_version >= 11)
+				document.write('<SCR' + 'IPT LANGUAGE=JavaScript1.1 SRC=\"' + OAS_url + 'adstream_mjx.ads/' + OAS_sitepage + '/1' + OAS_rns + '@' + OAS_listpos + '?' + OAS_query + '\"><\/SCRIPT>');
+
+
+				document.write('');
+
+				function OAS_AD(pos) {
+				if (OAS_version >= 11)
+				OAS_RICH(pos);
+				else
+				OAS_NORMAL(pos);
+				}
+				";
+	
+						drupal_add_js($output, 'inline', 'header', FALSE, TRUE);
+						$script_written['OAS_plugin'] = TRUE;
+	}
+}
