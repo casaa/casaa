@@ -1,0 +1,11 @@
+; $Id$
+
+name = Context Ad Serving And Analytics
+description = framework to manage ad-serving and analytics services
+core = 6.x
+version = "6.x-2.0-dev"
+
+package = CASAA
+
+dependencies[] = ctools
+dependencies[] = context

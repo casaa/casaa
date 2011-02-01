@@ -1,0 +1,137 @@
+<?php
+/*************************************************************
+ * @file: casaa.install
+ * Context Ad Serving and Analytics
+ * Version: 6.x-2.0-dev
+ * Author(s): geoff.maxey (cntlscrut) + tobby.hagler (tobby)
+ * 
+ * Basic database: install file
+ *************************************************************/
+
+/**
+ * implementation of hook_schema
+ * */
+function casaa_schema() {
+	$schema = array();
+	
+	$schema['casaa_context_mapper'] = array(
+		'description' => t('Base table for storing the main data for mappings'),
+		'fields' => array(
+			'aid' => array(
+				'description' => t('primary id'),
+				'type' => 'serial',
+				'not null' => TRUE,
+			),
+			'casaa_domain' => array(
+				'description' => t('domain id for the referring id'),
+				'type' => 'int',
+				'unsigned' => TRUE,
+				'not null' => TRUE,
+			),
+			'casaa_type' => array(
+				'description' => t('referring plug-in'),
+				'type' => 'varchar',
+				'length' => '99',
+				'not null' => TRUE,
+			),
+			'casaa_value' => array(
+				'description' => t('The main data value for the mapping'),
+				'type' => 'varchar',
+				'length' => '3000',
+				'not null' => TRUE,
+			),
+		),
+		'indexes' => array(
+			'casaa_type' => array('casaa_type'),
+		),
+		'primary key' => array('aid'),
+	);
+	
+	$schema['casaa_paths'] = array(
+		'description' => t('relative table to mapper with keys connecting paths to data values'),
+		'fields' => array(
+			'aid' => array(
+				'description' => t('primary index id for the table. is the same as the primary key of the mapper table'),
+				'type' => 'int',
+				'unsigned' => TRUE,
+				'not null' => TRUE,
+			),
+			'casaa_path' => array(
+				'description' => t('The url path for the path exception'),
+				'type' => 'varchar',
+				'length' => '99',
+				'not null' => TRUE,
+			),
+		),
+		'primary key' => array('aid'),
+	);
+	$schema['casaa_terms'] = array(
+		'description' => t('relative table to the mapper with keys connecting tax term ids to data values.'),
+		'fields' => array(
+			'aid' => array(
+				'description' => t('primary index id for the table. is the same as the primary key of the mapper table'),
+				'type' => 'int',
+				'unsigned' => TRUE,
+				'not null' => TRUE,
+			),
+			'casaa_tid' => array(
+				'description' => t('the id for the relative tax term'),
+				'type' => 'int',
+				'unsigned' => TRUE,
+				'not null' => TRUE,
+			),
+		),
+		'primary key' => array('aid'),
+	);
+	
+	$schema['casaa_plugin_registry'] = array(
+		'description' => t('A registry of all plug-ins and their global settings'),
+		'fields' => array(
+			'module_file' => array(
+				'description' => t('The module name from the file system.'),
+				'type' => 'varchar',
+				'length' => '99',
+				'not null' => TRUE,
+			),
+			'module_name' => array(
+				'description' => t('The human readable name for the plug-in'),
+				'type' => 'varchar',
+				'length' => '99',
+				'not null' => TRUE,
+			),
+			'status' => array(
+				'description' => t('Status of the module. Enabled or disabled.'),
+				'type' => 'int',
+				'unsigned' => TRUE,
+				'not null' => TRUE,
+			),
+			'globals' => array(
+				'description' => t('The global settings for the registered plug-in'),
+				'type' => 'varchar',
+				'length' => '3000',
+				'not null' => TRUE,
+			),
+		), 
+	);
+	
+	return $schema;
+}
+
+/**
+ * Implementation of hook_install
+ * */
+function casaa_install() {
+	if (drupal_install_schema('casaa')) {
+		drupal_set_message('CASAA Successfully Installed');
+	}
+	else {
+		drupal_set_message('Unable to install CASAA. See you system admnistrator.', 'error');
+	}
+}
+
+/**
+ * Implementation of hook_uninstall
+ * */
+function casaa_uninstall() {
+	drupal_uninstall_schema('casaa');
+}

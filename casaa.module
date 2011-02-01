@@ -1,0 +1,249 @@
+<?php
+/**************************************************************
+ * Context Ad-Serving and Analytics
+ * @file: casaa.module
+ * @author(s): geoff.maxey (cntlscrut) + tobby.hagler (tobby)
+ * @version: 6.x-2.x-dev
+ *************************************************************/
+
+/**
+ * Implementation of hook_perm()
+ * */
+function casaa_perm() {
+	return array('administer casaa module');
+}
+
+/**
+ * Implementation of hook_menu()
+ * */
+function casaa_menu() {
+	$items = array();
+	
+	//Main configuration pages and tabbed items
+	$items['admin/build/casaa'] = array(
+		'title' => t('CASAA'),
+		'description' => t('Administer the CASAA system... and some other stuff.'),
+		'page callback' => 'casaa_main_settings_page',
+		'access arguments' => array('administer casaa module'),
+	);
+	$items['admin/build/casaa/mappings'] = array(
+		'title' => t('Mappings'),
+		'type' => MENU_DEFAULT_LOCAL_TASK,
+		'weight' => -10,
+	);
+	$items['admin/build/casaa/globals'] = array(
+		'title' => t('Manage Plug-ins'),
+		'page callback' => 'casaa_global_settings_page',
+		'access arguments' => array('administer casaa module'),
+		'type' => MENU_LOCAL_TASK,
+		'weight' => -9,
+	);
+	
+	//ctools menu and callbacks
+	$items['admin/build/casaa/mappings/%ctools_js/view'] = array(
+		'page callback' => 'casaa_build_tables_callback',
+		'page arguments' => array(4),
+		'access arguments' => array('administer casaa module'),
+		'file' => 'casaa.table.inc',
+		'type' => MENU_CALLBACK,
+	);
+	$items['admin/build/casaa/mappings/%ctools_js/add'] = array(
+		'page callback' => 'casaa_add_settings_callback',
+		'page arguments' => array(4),
+		'access arguments' => array('administer casaa module'),
+		'file' => 'casaa.add.inc',
+		'type' => MENU_CALLBACK,
+	);
+		
+	return $items;
+}
+
+
+#################################################
+# Interface theming and preprocessing functions #
+#################################################
+
+/**
+ * Implementation of hook_theme
+ * Register themes for the main and global pages
+ * */
+function casaa_theme($existing, $type, $theme, $path) {
+	return array(
+		'casaa_main' => array(
+			'template' => 'casaa_main',
+			'path' => drupal_get_path('module', 'casaa') . '/themes',
+			'type' => 'module',
+		),
+		'casaa_global' => array(
+			'template' => 'casaa_global',
+			'path' => drupal_get_path('module', 'casaa') . '/themes',
+			'type' => 'module',
+		),
+	);
+}
+
+
+/**
+ * Implementation of template_preprocess_HOOK
+ * 
+ * Initialize and load the global settings form for the selected plug-in.
+ * Loaded vars will be passed to the template file.
+ * */
+function template_preprocess_casaa_global(&$variables, $hook) {
+	$variables['plugins'] = _casaa_load_plugins();
+	
+	// @fixme: sanitize the argument from url!!!
+	// set the plugin being viewed. if not specified in the url args
+	// use the first plugin in the list.
+	if (arg(4)) {
+		$variables['active_plugin'] = arg(4);
+	}
+	else {
+		$variables['active_plugin'] = pos(array_keys($variables['plugins']));
+	}
+	if (function_exists($variables['active_plugin'] . "_global_settings_form")) {
+		$variables['plugin_form'] = drupal_get_form($variables['active_plugin'] . "_global_settings_form");
+	}
+}
+
+/**
+ * Implementation of template_preprocess_HOOK
+ * 
+ * Initialize and load the main settings options for the domains
+ * and their corresponding mapping values.
+ * 
+ * @TODO: complete the integration of the domain module.
+ * */
+function template_preprocess_casaa_main(&$variables, $hook) {
+	if (module_exists('domain') && function_exists('domain_domains')) {
+		$variables['domains'] = domain_domains();
+		if (!arg(4)) {
+			$first_dom = pos($variables['domains']);
+			$variables['active_domain'] = $first_dom['domain_id'];
+		}
+	}
+	else {
+		$variables['domains'][] = array(
+			'domain_id' => 0,
+			'domain_name' => variable_get('site_name', ''),
+		);
+		$variables['active_domain'] = 0;
+	}
+}
+
+/**
+ * 
+ * */
+function casaa_main_settings_page() {
+	$output = '';
+	$output .= theme('casaa_main');
+	return $output;
+}
+
+
+/**
+ * 
+ * */
+function casaa_global_settings_page() {
+	$output = '';
+	$output = theme('casaa_global');
+	return $output;
+}
+
+
+##############################
+# Plug-in Registry Functions #
+##############################
+
+/**
+ * Plug-in Registry
+ * Insert the plug-in's data into the framework registry
+ * */
+function casaa_register($plugin = array()) {
+	if (!empty($plugin)) {
+		_casaa_register_plugin($plugin);
+	}
+}
+
+function _casaa_register_plugin($plugin) {
+	if (db_query("INSERT INTO {casaa_plugin_registry} (module_file, module_name, globals) VALUE ('%s', '%s', '%s')", $plugin['module'], $plugin['name'], $plugin['globals'])) {
+		drupal_set_message($plugin['name'] . " has been registered.");
+		return TRUE;
+	}
+	else {
+		drupal_set_message("Unable to register " . $plugin['name'], 'error');
+		return FALSE;
+	}
+}
+
+
+
+/**
+ * Plug-in Un-register
+ * Remove the plug-in's data from the framework registry
+ * */
+function casaa_unregister($plugin = '') {
+	if (!empty($plugin) && $plugin !== '') {
+		_casaa_unregister_plugin($plugin);
+	}
+}
+
+function _casaa_unregister_plugin($plugin) {
+	if (db_query("DELETE FROM {casaa_plugin_registry} WHERE module_file='%s'", $plugin)) {
+		drupal_set_message('Plugin successfully unregistered.');
+		return TRUE;
+	}
+	else {
+		drupal_set_message("Unable to remove plug-in from the registry!", 'error');
+		return FALSE;
+	}
+}
+
+
+
+######################################
+# Utility and Helper Functions       #
+######################################
+
+/**
+ * load the list of plug-ins and values from the registry
+ * */
+function _casaa_load_plugins() {
+	$query = db_query("SELECT * FROM {casaa_plugin_registry}");
+	while ($plugin = db_fetch_object($query)) {
+		$plugins[$plugin->module_file] = array(
+			'name' => $plugin->module_name,
+			'status' => $plugin->status,
+			'globals' => $plugin->globals,
+		);
+	}
+	return $plugins;
+}
+
+##################################################
+# Global and Main Settings Management Functions  #
+##################################################
+
+/**
+ * Global values save function
+ * */
+function casaa_global_save($vals = array()) {
+	if (is_array($vals) && !empty($vals)) {
+		if (db_query("UPDATE {casaa_plugin_registry} SET globals='%s' WHERE module_file='%s'", serialize($vals), $vals['plugin'])) {
+			drupal_set_message('Settings have been saved.');
+		}
+		else {
+			drupal_set_message("Unable to save settings. See administrator.", 'error');
+		}
+	}
+}
+
+/**
+ * 
+ * */
+function casaa_get_global_values($plugin) {
+	$query = db_query("SELECT globals FROM {casaa_plugin_registry} WHERE module_file='%s'", $plugin);
+	$val = db_fetch_object($query);
+	return unserialize($val->globals);
+}
+
