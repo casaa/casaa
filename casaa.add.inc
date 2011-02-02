@@ -9,17 +9,14 @@
  * framework
  ***********************************************/
 
+/**
+ * 
+ */ 
 function casaa_add_settings_callback($js = FALSE) {
 	
 	//@todo: sanitize!!!!!!!
 	$domain = arg(6);
 	$type   = arg(7);
-	
-	$map_obj = new StdClass;
-	$map_obj->domain = $domain;
-	$map_obj->type   = $type;
-	
-	$form_state = array('map_obj' => $map_obj);
 	
 	$step = arg(8);
 	if (!$step) {
@@ -79,9 +76,13 @@ function casaa_add_settings_callback($js = FALSE) {
 	ctools_include('wizard');
 	ctools_include('object-cache');
 	
-	//INSERT HERE!!!
-	// Each pass-through get the cache object and update
-	// our form_state object.
+	$map_obj = casaa_get_page_cache(NULL);
+	$map_obj->domain = $domain;
+	$map_obj->type   = $type;
+		
+	$form_state['map_obj'] = $map_obj; 
+		
+	ctools_object_cache_set('casaa_mapping', $form_state['cache name'], $map_obj);
 	
 	$output = ctools_wizard_multistep_form($form_info, $step, $form_state);
 	return $output;
@@ -113,6 +114,9 @@ function casaa_mapping_form(&$form, &$form_state) {
 	}
 }
 
+/**
+ * 
+ */ 
 function casaa_mapping_form_submit(&$form, &$form_state) {
 	$map = $form_state['map_obj'];
 	$values = $form_state['values'];
@@ -127,6 +131,9 @@ function casaa_mapping_form_submit(&$form, &$form_state) {
 
 /** ----- Optional Step 2 ---------- **/
 
+/**
+ * 
+ */ 
 function casaa_mapping2_form(&$form, &$form_state) {
 	$form['casaa_term_values'] = array(
 		'#type' => 'select',
@@ -138,6 +145,9 @@ function casaa_mapping2_form(&$form, &$form_state) {
 	);
 }
 
+/**
+ * 
+ */ 
 function casaa_mapping2_form_submit(&$form, &$form_state) {
 	$values = $form_state['values'];
 	$form_state['map_obj']->term = $values['casaa_term_values'];
@@ -146,6 +156,9 @@ function casaa_mapping2_form_submit(&$form, &$form_state) {
 
 /** ------ Final Step ----------------- **/
 
+/**
+ * 
+ */ 
 function casaa_settings_form(&$form, &$form_state) {
 	$plugins = _casaa_load_plugins();
 	//var_dump($plugins);
@@ -155,6 +168,9 @@ function casaa_settings_form(&$form, &$form_state) {
 	);
 }
 
+/**
+ * 
+ */ 
 function casaa_settings_form_submit(&$form, &$form_state) {
 	$values = $form_state['values'];
 	$form_state['map_obj']->values = $values;
@@ -201,6 +217,13 @@ function casaa_wizard_cancel(&$form_state) {
 	drupal_set_message('Action Cancelled');
 }
 
+/**
+ * Get the form cache
+ */ 
+function casaa_get_page_cache($name) {
+	$cache = ctools_object_cache_get('casaa_mapping', $name);
+	return $cache;
+}
 
 /** ------- Mapping Settings Save Functions ------------**/
 
