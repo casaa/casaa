@@ -24,6 +24,9 @@
 	<?php endif;?>
 </div>
 <div class="casaa-main-content">
+	<div class="casaa-status">
+		<?php print drupal_get_form('casaa_status_form');?>
+	</div>
 	<?php
 		print $plugin_form;
 	?>
