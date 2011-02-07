@@ -157,19 +157,27 @@ function casaa_mapping2_form_submit(&$form, &$form_state) {
 /** ------ Final Step ----------------- **/
 
 /**
+ * Cycle through the plug-ins and present their
+ * mapping settings forms if the plug-in has been 
+ * enabled for output.
  * 
+ * @todo - retrieve the default values if we are editing a setting.
  */ 
 function casaa_settings_form(&$form, &$form_state) {
 	$plugins = _casaa_load_plugins();
-	//var_dump($plugins);
-	$form['casaa_settings_form'] = array(
-		'#type' => 'textfield',
-		'#title' => 'second step',
-	);
+	foreach ($plugins as $key => $values) {
+		if ($values['status'] == 1) {
+			$hook = $key . "_mapping_settings_form";
+			if (module_exists($key) && function_exists($hook)) {
+				$form[] = $hook(array());
+			}
+		}
+	}
 }
 
 /**
- * 
+ * Cycle through the plug-ins and fire off their submission
+ * handlers.
  */ 
 function casaa_settings_form_submit(&$form, &$form_state) {
 	$values = $form_state['values'];
@@ -229,6 +237,8 @@ function casaa_get_page_cache($name) {
 
 /**
  * Save the settings from the form
+ * 
+ * @todo: move this function into the .module file?
  */
 function casaa_mapping_save($values = NULL) {
 	var_dump($values);die;
