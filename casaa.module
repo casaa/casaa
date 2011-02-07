@@ -54,7 +54,15 @@ function casaa_menu() {
 		'file' => 'casaa.add.inc',
 		'type' => MENU_CALLBACK,
 	);
-		
+	
+	
+	// AHAH callbacks
+	$items['casaa_status/js'] = array(
+		'page callback' => 'casaa_set_status_js',
+		'access arguments' => array('access content'),
+		'type' => MENU_CALLBACK,
+	);
+	
 	return $items;
 }
 
@@ -239,11 +247,112 @@ function casaa_global_save($vals = array()) {
 }
 
 /**
- * 
+ * Return the global values for the requesting plug-in.
  * */
 function casaa_get_global_values($plugin) {
 	$query = db_query("SELECT globals FROM {casaa_plugin_registry} WHERE module_file='%s'", $plugin);
 	$val = db_fetch_object($query);
 	return unserialize($val->globals);
 }
+
+
+/**
+ * Generate a simple checkbox for enabling/disabling.
+ */ 
+function casaa_status_form() {
+	$active = arg(4);
+	$plugins = _casaa_load_plugins();
+	if (!$active) {
+		$active = pos(array_keys($plugins));
+	}
+
+	if ($plugins[$active]['status'] == 1) {
+		$title = 'Disable';
+	}
+	else {
+		$title = 'Enable';
+	}
+	
+	$form['plugin_status_check'] = array(
+		'#type' => 'checkbox',
+		'#title' => $title,
+		'#default_value' => $plugins[$active]['status'],
+		'#prefix' => '<div class="clear-block" id="casaa-status-wrapper">',
+		'#suffix' => '</div>',
+		'#ahah' => array(
+			'path' => 'casaa_status/js/' . $active,
+			'method' => 'replace',
+			'wrapper' => 'casaa-status-wrapper',
+		),
+	);
+	return $form;
+}
+
+
+/**
+ * AHAH callback for status management.
+ * 
+ * Grab the status from the form state, update
+ * the plugin status in the registry, and 
+ * rebuild the form with the new status. 
+ */
+function casaa_set_status_js() {
+	include_once 'modules/node/node.pages.inc';
+	
+	$form_state = array('storage' => NULL, 'submitted' => FALSE);
+	$form_build_id = $_POST['form_build_id'];
+	
+	$form = form_get_cache($form_build_id, $form_state);
+	$args = $form['#parameters'];
+	$form_id = array_shift($args);
+	$form_state['post'] = $form['#post'] = $_POST;
+	$form['#programmed'] = $form['#redirect'] = FALSE;
+	drupal_process_form($form_id, $form, $form_state);
+	
+	$status = $form_state['values']['plugin_status_check'];
+
+	$active = arg(2);
+	$plugins = _casaa_load_plugins();
+	if (!$active) {
+		$active = pos(array_keys($plugins));
+	}
+	
+	if ($status == 1) {
+		$title = 'Disable';
+	}
+	else {
+		$title = 'Enable';
+	}
+	
+	_casaa_set_status($active, $status);
+	
+	$form = drupal_rebuild_form($form_id, $form_state, $args, $form_build_id);
+	
+	$element['plugin_status_check'] = array(
+		'#type' => 'checkbox',
+		'#title' => $title,
+		'#value' => $status,
+		'#prefix' => '<div class="clear-block" id="casaa-status-wrapper">',
+		'#suffix' => '</div>',
+		'#ahah' => array(
+			'path' => 'casaa_status/js/' . $active,
+			'method' => 'replace',
+			'wrapper' => 'casaa-status-wrapper',
+		),
+	);
+
+	$output .= theme('status_messages');
+	$output .= drupal_render($element);
+	drupal_json(array('status' => TRUE, 'data' => $output));
+}
+
+/**
+ * Update the status in the plugin registry
+ */ 
+function _casaa_set_status($plugin, $status) {
+	if (db_query("UPDATE {casaa_plugin_registry} SET status=%d WHERE module_file='%s'", $status, $plugin)) {
+		drupal_set_message('Status updated');
+	}
+}
+
 
