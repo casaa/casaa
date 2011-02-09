@@ -120,8 +120,8 @@ function template_preprocess_casaa_global(&$variables, $hook) {
  * Initialize and load the main settings options for the domains
  * and their corresponding mapping values.
  * 
- * @TODO: complete the integration of the domain module.
- * */
+ * @todo: complete the integration of the domain module.
+ */
 function template_preprocess_casaa_main(&$variables, $hook) {
 	if (module_exists('domain') && function_exists('domain_domains')) {
 		$variables['domains'] = domain_domains();
@@ -141,7 +141,7 @@ function template_preprocess_casaa_main(&$variables, $hook) {
 
 /**
  * 
- * */
+ */
 function casaa_main_settings_page() {
 	$output = '';
 	$output .= theme('casaa_main');
@@ -151,7 +151,7 @@ function casaa_main_settings_page() {
 
 /**
  * 
- * */
+ */
 function casaa_global_settings_page() {
 	$output = '';
 	$output = theme('casaa_global');
@@ -166,7 +166,7 @@ function casaa_global_settings_page() {
 /**
  * Plug-in Registry
  * Insert the plug-in's data into the framework registry
- * */
+ */
 function casaa_register($plugin = array()) {
 	if (!empty($plugin)) {
 		_casaa_register_plugin($plugin);
@@ -189,7 +189,7 @@ function _casaa_register_plugin($plugin) {
 /**
  * Plug-in Un-register
  * Remove the plug-in's data from the framework registry
- * */
+ */
 function casaa_unregister($plugin = '') {
 	if (!empty($plugin) && $plugin !== '') {
 		_casaa_unregister_plugin($plugin);
@@ -215,7 +215,7 @@ function _casaa_unregister_plugin($plugin) {
 
 /**
  * load the list of plug-ins and values from the registry
- * */
+ */
 function _casaa_load_plugins() {
 	$query = db_query("SELECT * FROM {casaa_plugin_registry}");
 	while ($plugin = db_fetch_object($query)) {
@@ -234,7 +234,7 @@ function _casaa_load_plugins() {
 
 /**
  * Global values save function
- * */
+ */
 function casaa_global_save($vals = array()) {
 	if (is_array($vals) && !empty($vals)) {
 		if (db_query("UPDATE {casaa_plugin_registry} SET globals='%s' WHERE module_file='%s'", serialize($vals), $vals['plugin'])) {
@@ -248,7 +248,7 @@ function casaa_global_save($vals = array()) {
 
 /**
  * Return the global values for the requesting plug-in.
- * */
+ */
 function casaa_get_global_values($plugin) {
 	$query = db_query("SELECT globals FROM {casaa_plugin_registry} WHERE module_file='%s'", $plugin);
 	$val = db_fetch_object($query);
