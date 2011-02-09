@@ -182,6 +182,16 @@ function casaa_settings_form(&$form, &$form_state) {
 function casaa_settings_form_submit(&$form, &$form_state) {
 	$values = $form_state['values'];
 	$form_state['map_obj']->values = $values;
+	
+	$plugins = _casaa_load_plugins();
+	
+	foreach ($plugins as $key => $globals) {
+		$hook = $key . "_mapping_settings_form_submit_handler";
+		if (module_exists($key) && function_exists($hook)) {
+			$pack = $hook($values);
+			_casaa_mapping_save($form_state['map_obj'], $key, $pack);
+		}
+	}
 }
 
 
@@ -203,12 +213,14 @@ function casaa_wizard_next(&$form_state) {
  */ 
 function casaa_wizard_finish(&$form_state) {
 	$map = $form_state['map_obj'];
+	/*
 	if (casaa_mapping_save($map)) {
 		drupal_set_message('Mapping has been created');
 	}
 	else {
 		drupal_set_message('Unable to save!', 'error');
 	}
+	*/
 	ctools_object_cache_clear('casaa_mapping', $form_state['cache name']);
 	$form_state['redirect'] = 'admin/build/casaa/main/' . $map->domain;
 }
@@ -222,8 +234,7 @@ function casaa_wizard_cancel(&$form_state) {
 	$map = $form_state['map_obj'];
 	ctools_object_cache_clear('casaa_mapping', $form_state['cache name']);
 	$form_state['redirect'] = 'admin/build/casaa/main/' . $map->domain;
-	drupal_set_message('Action Cancelled');
-}
+	drupal_set_message('Action Cancelled');}
 
 /**
  * Get the form cache
@@ -240,8 +251,24 @@ function casaa_get_page_cache($name) {
  * 
  * @todo: move this function into the .module file?
  */
-function casaa_mapping_save($values = NULL) {
-	var_dump($values);die;
+function _casaa_mapping_save($form_state, $plugin, $package) {
+	if (db_query("INSERT INTO {casaa_context_mapper} (casaa_domain, casaa_type, casaa_value) VALUES (%d, '%s', '%s')", $form_state->domain, $plugin, $package)) {
+		//get the aid of the inserted row.
+		$aid = db_fetch_object(db_query("SELECT aid FROM {casaa_context_mapper} ORDER BY aid DESC LIMIT 1"));
+		if ($form_state->type == 'paths') {
+			if (db_query("INSERT INTO {casaa_paths} (aid, casaa_path) VALUES (%d, '%s')", $aid->aid, $form_state->path)) {
+				drupal_set_message("Settings have been saved.");
+			}
+		}
+		else if ($form_state->type == 'terms') {
+			if (db_query("INSERT INTO {casaa_terms} (aid, casaa_tid) VALUES (%d, %d)", $aid->aid, $form_state->term)) {
+				drupal_set_message("Settings have been saved");
+			}
+		}
+	}
+	else {
+		drupal_set_message('Unable to save settings. contact you administrator', 'error');
+	}
 }
 
 
