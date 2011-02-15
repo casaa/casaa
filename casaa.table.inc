@@ -1,8 +1,16 @@
 <?php
+/*************************************************
+ * @file: casaa.table.inc
+ * @authors: geoff.maxey / tobby.hagler
+ * 
+ * Build and display the tables for all current
+ * mapping settings and the configuration options 
+ * through modal windows.
+ **************************************************/
 
 /**
  * Build the modal window to display the table.
- * */
+ */
 function casaa_build_tables_callback($js = FALSE) {
 	$title = t('Table View');
 	
@@ -92,7 +100,7 @@ function casaa_build_table($domain, $type) {
 				}
 				$columns[] = $display_data;
 			}
-			$columns[] = l('Configure', 'admin/build/casaa/edit/term/' . $tid) . "&nbsp/&nbsp" . l('Delete', 'admin/build/casaa/delete/term/' . $tid);
+			$columns[] = l('Configure', 'admin/build/casaa/mappings/nojs/edit/' . $domain . '/term/' . $tid, array('attributes' => array('class' => 'ctools-use-ajax'))) . "&nbsp/&nbsp" . l('Delete', 'admin/build/casaa/mappings/nojs/delete/' . $domain . '/term/' . $tid, array('attributes' => array('class' => 'ctools-use-ajax')));
 			$rows[] = $columns;
 		}
 		$output = theme_table($term_header, $rows);
