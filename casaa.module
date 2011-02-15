@@ -6,6 +6,8 @@
  * @version: 6.x-2.x-dev
  *************************************************************/
 
+include 'casaa.execute.inc';
+
 /**
  * Implementation of hook_perm()
  * */
@@ -53,6 +55,19 @@ function casaa_menu() {
 		'access arguments' => array('administer casaa module'),
 		'file' => 'casaa.add.inc',
 		'type' => MENU_CALLBACK,
+	);
+	$items['admin/build/casaa/mappings/%ctools_js/edit'] = array(
+		'page callback' => 'casaa_add_settings_callback',
+		'page arguments' => array(4),
+		'access arguments' => array('administer casaa module'),
+		'file' => 'casaa.add.inc',
+		'type' => MENU_CALLBACK,
+	);
+	$items['admin/build/casaa/mappings/%ctools_js/delete'] = array(
+		'page callback' => 'casaa_delete_settings_callback',
+		'page arguments' => array(4),
+		'access arguments' => array('administer casaa module'),
+		'file' => 'casaa.delete.inc',
 	);
 	
 	
@@ -355,4 +370,53 @@ function _casaa_set_status($plugin, $status) {
 	}
 }
 
+/** --------- Context Registration ----------------------- **/
+/**
+ * Implementation of hook_context_registry()
+ * 
+ * Register Our plug-in w/ the Context Module
+ */ 
+function casaa_context_registry() {
+	$registry['conditions'] = array(
+		'casaa_path_context' => array(
+      'title' => t('CASAA Output On Path'),
+      'description' => t('Set CASAA output on a path.'),
+      'plugin' => 'casaa_path_context_condition',
+    ),
+		'casaa_term_context' => array(
+			'title' => t('CASAA Output on a Node\'s Taxonomy Term'),
+			'description' => t('Set CASAA output on a taxonomy term.'),
+			'plugin' => 'casaa_term_context_condition',
+		),
+	);
+	return $registry;
+}
 
+/**
+ * Implementation of hook_context_plugins()
+ * 
+ * Tell the context module what and where our plug-ins
+ * are.
+ */ 
+function casaa_context_plugins() {
+	$plugins = array();
+	
+	$plugins['casaa_path_context_condition'] = array(
+		'handler' => array(
+			'path' => drupal_get_path('module', 'casaa') . '/plugins',
+			'file' => 'casaa_path.context.inc',
+			'class' => 'casaa_path_context_condition',
+			'parent' => 'context_condition_path',
+		),
+	);
+	$plugins['casaa_term_context_condition'] = array(
+		'handler' => array(
+			'path' => drupal_get_path('module', 'casaa') . '/plugins',
+			'file' => 'casaa_term.context.inc',
+			'class' => 'casaa_term_context_condition',
+			'parent' => 'context_condition_node_taxonomy',
+		),
+	);
+	
+	return $plugins;
+}
