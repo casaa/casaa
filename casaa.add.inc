@@ -73,6 +73,8 @@ function casaa_add_settings_callback($js = FALSE) {
 		'modal' => TRUE,
 	);
 	
+	ctools_include('modal');
+	ctools_include('ajax');
 	ctools_include('wizard');
 	ctools_include('object-cache');
 	
@@ -80,12 +82,17 @@ function casaa_add_settings_callback($js = FALSE) {
 	$map_obj->domain = $domain;
 	$map_obj->type   = $type;
 		
-	$form_state['map_obj'] = $map_obj; 
+	$form_state['map_obj'] = $map_obj;
+	$form_state['modal'] = TRUE;
 		
 	ctools_object_cache_set('casaa_mapping', $form_state['cache name'], $map_obj);
-	
 	$output = ctools_wizard_multistep_form($form_info, $step, $form_state);
-	return $output;
+	if ($js) {
+		ctools_modal_render('Add Settings', $output);
+	}
+	else {
+		return $output;
+	}
 }
 
 
@@ -213,14 +220,7 @@ function casaa_wizard_next(&$form_state) {
  */ 
 function casaa_wizard_finish(&$form_state) {
 	$map = $form_state['map_obj'];
-	/*
-	if (casaa_mapping_save($map)) {
-		drupal_set_message('Mapping has been created');
-	}
-	else {
-		drupal_set_message('Unable to save!', 'error');
-	}
-	*/
+
 	ctools_object_cache_clear('casaa_mapping', $form_state['cache name']);
 	$form_state['redirect'] = 'admin/build/casaa/main/' . $map->domain;
 }
@@ -234,7 +234,8 @@ function casaa_wizard_cancel(&$form_state) {
 	$map = $form_state['map_obj'];
 	ctools_object_cache_clear('casaa_mapping', $form_state['cache name']);
 	$form_state['redirect'] = 'admin/build/casaa/main/' . $map->domain;
-	drupal_set_message('Action Cancelled');}
+	drupal_set_message('Action Cancelled');
+}
 
 /**
  * Get the form cache
@@ -244,7 +245,7 @@ function casaa_get_page_cache($name) {
 	return $cache;
 }
 
-/** ------- Mapping Settings Save Functions ------------**/
+/** ------- Mapping Settings Management Functions ------------**/
 
 /**
  * Save the settings from the form
@@ -270,7 +271,6 @@ function _casaa_mapping_save($form_state, $plugin, $package) {
 		drupal_set_message('Unable to save settings. contact you administrator', 'error');
 	}
 }
-
 
 
 /** ---- Taxonomy Options Functions -------------------**/
