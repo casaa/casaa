@@ -40,8 +40,6 @@ function casaa_build_tables_callback($js = FALSE) {
  * @todo: have the options links stay within the modal window.
  * @todo: condense the process to eliminate extraneous code.
  * @todo: lose a loop... lols
- * @todo: escape the path values and pass as GET var for the 
- * 				path options link.
  */
 function casaa_build_table($domain, $type) {
 	$rows = array();
@@ -71,7 +69,8 @@ function casaa_build_table($domain, $type) {
 				}
 				$columns[] = $display_data;
 			}
-			$columns[] = l('Configure', 'admin/build/casaa/edit/path/' . $path) . "&nbsp/&nbsp" . l('Delete', 'admin/build/casaa/delete/path/' . $path);
+			$pid = _casaa_get_path_id($path);
+			$columns[] = l('Configure', 'admin/build/casaa/mappings/nojs/edit/' . $domain . '/path/' . $pid, array('attributes' => array('class' => 'ctools-use-ajax'))) . "&nbsp/&nbsp" . l('Delete', 'admin/build/casaa/mappings/nojs/delete/' . $domain . '/path/' . $pid, array('attributes' => array('class' => 'ctools-use-ajax')));
 			$rows[] = $columns;
 		}
 		$output = theme_table($path_header, $rows);
@@ -124,4 +123,13 @@ function _casaa_build_header($type) {
 		$header[] = $key;
 	}
 	return $header;
+}
+
+/**
+ * Get a unique id for a path
+ */ 
+function _casaa_get_path_id($path) {
+	$aid = db_fetch_object(db_query("SELECT aid FROM {casaa_paths} WHERE casaa_path='%s'", $path));
+
+	return $aid->aid;	
 }
