@@ -57,10 +57,10 @@ function casaa_menu() {
 		'type' => MENU_CALLBACK,
 	);
 	$items['admin/build/casaa/mappings/%ctools_js/edit'] = array(
-		'page callback' => 'casaa_add_settings_callback',
+		'page callback' => 'casaa_edit_settings_callback',
 		'page arguments' => array(4),
 		'access arguments' => array('administer casaa module'),
-		'file' => 'casaa.add.inc',
+		'file' => 'casaa.edit.inc',
 		'type' => MENU_CALLBACK,
 	);
 	$items['admin/build/casaa/mappings/%ctools_js/delete'] = array(
