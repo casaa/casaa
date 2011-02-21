@@ -50,7 +50,10 @@ function casaa_delete_settings_form_submit($form, $form_state) {
 
 	if ($form_state['values']['op'] == 'Delete') {
 		if ($form_state['values']['casaa_delete_value']['type'] == 'term') {
-			$query = db_query("SELECT c.aid FROM {casaa_context_mapper} c LEFT JOIN {casaa_terms} t ON c.aid = t.aid WHERE t.casaa_tid=%d", $form_state['values']['casaa_delete_value']['id']);
+			$query = db_query("SELECT c.aid FROM {casaa_context_mapper} c
+				LEFT JOIN {casaa_terms} t ON c.aid = t.aid
+				WHERE t.casaa_tid=%d
+				", $form_state['values']['casaa_delete_value']['id']);
 			while ($aid = db_fetch_object($query)) {
 				if (db_query("DELETE FROM {casaa_terms} WHERE aid=%d", $aid->aid)) {
 					if (db_query("DELETE FROM {casaa_context_mapper} WHERE aid=%d", $aid->aid)) {
@@ -60,7 +63,21 @@ function casaa_delete_settings_form_submit($form, $form_state) {
 			}
 		}
 		else if ($form_state['values']['casaa_delete_value']['type'] == 'path') {
-			var_dump('deleting paths');
+			
+			$query = db_query("SELECT c.aid FROM {casaa_context_mapper} c 
+				LEFT JOIN {casaa_paths} p ON c.aid = p.aid
+				WHERE p.casaa_path = (
+					SELECT casaa_path FROM {casaa_paths} WHERE aid=%d
+				)
+				", $form_state['values']['casaa_delete_value']['id']);
+				
+			while ($aid = db_fetch_object($query)) {
+				if (db_query("DELETE FROM	{casaa_paths} WHERE aid=%d", $aid->aid)) {
+					if (db_query("DELETE FROM {casaa_context_mapper} WHERE aid=%d", $aid->aid)) {
+						drupal_set_message('Deleted');
+					}
+				}
+			}
 		}
 		//drupal_set_message('Deleting...');
 		$commands[] = ctools_modal_command_dismiss(t('Deleted'));
