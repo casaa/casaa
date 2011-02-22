@@ -135,3 +135,20 @@ function casaa_install() {
 function casaa_uninstall() {
 	drupal_uninstall_schema('casaa');
 }
+
+
+/**
+ * If we're installed on top of an older version
+ * update the database to the current schema
+ * 
+ * Pretty much we're adding the casaa_domain column.
+ * 
+ */ 
+function casaa_update_6200(&$sandbox) {
+	$ret = array();
+	
+	//might get some errors but, this is not the official upgrade.
+	drupal_install_schema('casaa');
+  return $ret;
+  
+}
