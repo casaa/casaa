@@ -15,7 +15,7 @@
 		<?php if (is_array($domains) && !empty($domains)) : ?>
 			<ul class="casaa-plugin-list">
 				<?php $i=0; foreach ($domains as $domain) :?>
-					<li id="casaa-<?php print $i++; ?>"><?php print l($domain['domain_name'], 'admin/build/casaa/main/' . $active_domain);?></li>
+					<li id="casaa-<?php ($domain['domain_id'] == $active_domain) ? print 'active' : print $i++; ?>"><?php print l($domain['sitename'], 'admin/build/casaa/main/' . $domain['domain_id']);?></li>
 				<?php endforeach; ?>
 			</ul>
 		<?php else: ?>
@@ -33,7 +33,7 @@
 					    'attributes' => array('class' => 'ctools-use-modal'))); ?></li>
 			</ul>
 		</div>
-		<div class="casaa-right-column">
+		<div class="casaa-left-column">
 			<span class="casaa-header">Create</span>
 			<ul class="casaa-plugin-list">
 				<?php
@@ -45,6 +45,12 @@
 				<li><?php print l('Add Path Mapping', 'admin/build/casaa/mappings/nojs/add/' . $active_domain . '/paths'/*, array(
 					    'attributes' => array('class' => 'ctools-use-modal'))*/); ?></li>
 			</ul>
+		</div>
+		<div class="casaa-right-column">
+			<span class="casaa-header">Find</span>
+		</div>
+		<div class="casaa-right-column">
+			<span class="casaa-header">Move</span>
 		</div>
 	</div>
 </div>
