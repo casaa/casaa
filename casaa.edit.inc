@@ -74,8 +74,9 @@ function casaa_edit_settings_form_submit($form, $form_state) {
 	if ($op == 'Submit') {
 		//do some stuff
 		foreach ($plugins as $plugin => $values) {
-			$saved = _casaa_update_values($type, $domain, $plugin, $id, $form_state['values']);
+			$saved = _casaa_update_values($base['type'], $base['domain'], $plugin, $base['id'], $form_state['values']);
 		}
+		$commands[] = ctools_modal_command_dismiss(t('w00t!'));
 	}
 	else if ($op == 'Cancel') {
 		drupal_set_message('Edit Canceled');
@@ -96,7 +97,36 @@ function casaa_edit_settings_form_submit($form, $form_state) {
  * serialize and update the row.
  */ 
 function _casaa_update_values($type, $domain, $plugin, $id, $values) {
-	var_dump('i is updating stuff, yo!!!');
+	$saved = FALSE;
+	$hook = $plugin . "_mapping_settings_form_submit_handler";
+	
+	if (function_exists($hook)) {
+		$pack = $hook($values);
+	}
+	
+	if ($type == 'path') {
+		$query = db_query("SELECT p.aid FROM {casaa_context_mapper} c 
+			LEFT JOIN {casaa_paths} p ON c.aid=p.aid
+			WHERE c.casaa_domain=%d AND c.casaa_type='%s' AND p.casaa_path=(
+				SELECT casaa_path FROM {casaa_paths} WHERE aid=%d
+			)
+		", $domain, $plugin, $id);
+		$aid = db_fetch_object($query);
+		if (db_query("UPDATE {casaa_context_mapper} SET casaa_value='%s' WHERE aid=%d", $pack, $aid->aid)) {
+			$saved = TRUE;
+		}
+	}
+	else if ($type == 'term') {
+		$query = db_query("SELECT c.aid FROM {casaa_context_mapper} c
+			LEFT JOIN {casaa_terms} t ON c.aid=t.aid
+			WHERE c.casaa_domain=%d AND c.casaa_type='%s' AND t.casaa_tid=%d
+		", $domain, $plugin, $id);
+		$aid = db_fetch_object($query);
+		if (db_query("UPDATE {casaa_context_mapper} SET casaa_value='%s' WHERE aid=%d", $pack, $aid->aid)) {
+			$saved = TRUE;
+		}
+	}
+	return $saved;
 }
 
 /**
