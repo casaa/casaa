@@ -144,11 +144,14 @@ function template_preprocess_casaa_main(&$variables, $hook) {
 			$first_dom = pos($variables['domains']);
 			$variables['active_domain'] = $first_dom['domain_id'];
 		}
+		else {
+			$variables['active_domain'] = arg(4);
+		}
 	}
 	else {
 		$variables['domains'][] = array(
 			'domain_id' => 0,
-			'domain_name' => variable_get('site_name', ''),
+			'sitename' => variable_get('site_name', ''),
 		);
 		$variables['active_domain'] = 0;
 	}
@@ -189,7 +192,7 @@ function casaa_register($plugin = array()) {
 }
 
 function _casaa_register_plugin($plugin) {
-	if (db_query("INSERT INTO {casaa_plugin_registry} (module_file, module_name, globals) VALUE ('%s', '%s', '%s')", $plugin['module'], $plugin['name'], $plugin['globals'])) {
+	if (db_query("INSERT INTO {casaa_plugin_registry} (module_file, module_name, status, globals) VALUE ('%s', '%s', 0, '%s')", $plugin['module'], $plugin['name'], $plugin['globals'])) {
 		drupal_set_message($plugin['name'] . " has been registered.");
 		return TRUE;
 	}
