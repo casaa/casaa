@@ -12,11 +12,11 @@
  * Build the modal window to display the table.
  */
 function casaa_build_tables_callback($js = FALSE) {
-	$title = t('Table View');
 	
 	// Don't forget to sanitize!!!!!
 	$domain = arg(6);
 	$type = arg(7);
+	$title = _casaa_build_title($domain, $type);
 	
 	$output = casaa_build_table($domain, $type);
 	
@@ -49,7 +49,7 @@ function casaa_build_table($domain, $type) {
 	
 	if ($type == "paths") {
 		$path_header = _casaa_build_header('path');
-		$query = db_query("SELECT DISTINCT casaa_path FROM {casaa_paths}");
+		$query = db_query("SELECT DISTINCT p.casaa_path FROM {casaa_paths} p INNER JOIN {casaa_context_mapper} c ON p.aid=c.aid WHERE c.casaa_domain=%d", $domain);
 		while ($path = db_fetch_object($query)) {
 			$paths[] = $path->casaa_path;
 		}
@@ -63,6 +63,7 @@ function casaa_build_table($domain, $type) {
 					", $plugin, $path, $domain);
 					
 				$value = db_fetch_object($query);
+				$display_data = '';
 				$hook = $plugin . "_table_display_data";
 				if (function_exists($hook)) {
 					$display_data = $hook($value->casaa_value);
@@ -78,8 +79,10 @@ function casaa_build_table($domain, $type) {
 	else if ($type == "terms") {
 		$term_header = _casaa_build_header('term');
 		$query = db_query("SELECT DISTINCT c.casaa_tid, t.name FROM {casaa_terms} c
-			LEFT JOIN {term_data} t ON c.casaa_tid = t.tid
-		");
+			LEFT JOIN {term_data} t ON c.casaa_tid = t.tid 
+			INNER JOIN {casaa_context_mapper} m ON m.aid=c.aid
+			WHERE m.casaa_domain=%d
+		", $domain);
 		while ($tid = db_fetch_object($query)) {
 			$tids[$tid->casaa_tid] = $tid->name;
 		}
@@ -94,6 +97,7 @@ function casaa_build_table($domain, $type) {
 				
 				$value = db_fetch_object($query);
 				$hook = $plugin . "_table_display_data";
+				$display_data = '';
 				if (function_exists($hook)) {
 					$display_data = $hook($value->casaa_value);
 				}
@@ -122,6 +126,7 @@ function _casaa_build_header($type) {
 	foreach ($plugins as $key => $values) {
 		$header[] = $key;
 	}
+	$header[] = t('Options');
 	return $header;
 }
 
@@ -133,3 +138,19 @@ function _casaa_get_path_id($path) {
 
 	return $aid->aid;	
 }
+
+/**
+ * 
+ */
+function _casaa_build_title($domain, $type) {
+	if (module_exists('domain')) {
+		$domains = domain_domains();
+		$site = $domains[$domain]['subdomain'];
+	}
+	else {
+		$site = variable_get('site_name', 'Site Name');
+	}
+	$title = ucfirst($type) . " View - $site";
+	return $title; 
+	
+} 
