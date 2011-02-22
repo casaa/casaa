@@ -16,7 +16,7 @@
 		<ul class="casaa-plugin-list">	
 			<?php $i = 0;	foreach ($plugins as $key => $plugin) : ?>
 				<?php if (!$active_plugin && $i == 0) {$active_plugin = $key;} ?>
-				<li id="casaa-<?php print $i++; ?>"><?php print l($plugin['name'], 'admin/build/casaa/globals/' . $key); ?></li>
+				<li id="casaa-<?php ($active_plugin == $key)? print 'active' : print $i++; ?>"><?php print l($plugin['name'], 'admin/build/casaa/globals/' . $key); ?></li>
 			<?php endforeach;?>
 		</ul>
 	<?php else: ?>
