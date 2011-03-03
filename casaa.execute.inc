@@ -25,12 +25,18 @@ function casaa_init() {
 	if (drupal_is_front_page()) {
 		$current_path = '[[front]';
 	}
-	else {
-		$current_path = drupal_get_path_alias($_GET['q']);
-   	if ($current_path != $_GET['q']) {
-   		$current_path = $_GET['q'];
-   	}
+	else if (variable_get("clean_url", 0) == 0) {
+		$current_path = $_GET['q'];
 	}
+	else if (strpos($_SERVER['REQUEST_URI'], '?') !== FALSE) {
+		$parts = explode('?', $_SERVER['REQUEST_URI']);
+		$current_path = $parts[0];
+	}
+	else {
+		$current_path = $_SERVER['REQUEST_URI'];
+	}
+	
+	
 	$plugins = _casaa_load_plugins();
 	if (module_exists('domain')) {
 		$domain = domain_get_domain();
@@ -166,10 +172,11 @@ function casaa_footer()
 	$tokens = _casaa_load_plugins();
 	foreach ($tokens as $token => $values)
 	{
+		$globals = unserialize($values['globals']);
 		$hook_output = $token . '_output';
-		if (variable_get($token . '_has_defaults', FALSE) && !$script_written[$token] && function_exists($hook_output))
+		if ($globals[$token . '_has_defaults'] && !$script_written[$token] && function_exists($hook_output))
 		{
-			$hook_output(null);
+			$hook_output(null, $globals);
 		}
 	}
 }
