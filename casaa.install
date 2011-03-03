@@ -149,6 +149,10 @@ function casaa_update_6200(&$sandbox) {
 	
 	//might get some errors but, this is not the official upgrade.
 	drupal_install_schema('casaa');
+	
+	//add the new column to the table if we're updating the old one from v1.x
+	db_add_column($ret, 'casaa_context_mapper', 'casaa_domain', 'int', array('not null' => TRUE, 'default' => "0"));
+	
   return $ret;
   
 }
