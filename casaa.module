@@ -69,6 +69,30 @@ function casaa_menu() {
 		'access arguments' => array('administer casaa module'),
 		'file' => 'casaa.delete.inc',
 	);
+	$items['admin/build/casaa/mappings/%ctools_js/import'] = array(
+		'page callback' => 'casaa_import_settings_callback',
+		'page arguments' => array(4),
+		'access arguments' => array('administer casaa module'),
+		'file' => 'casaa.move.inc',
+	);
+	$items['admin/build/casaa/mappings/%ctools_js/export'] = array(
+		'page callback' => 'casaa_export_settings_callback',
+		'page arguments' => array(4),
+		'access arguments' => array('administer casaa module'),
+		'file' => 'casaa.move.inc',
+	);
+	$items['admin/build/casaa/mappings/%ctools_js/clone'] = array(
+		'page callback' => 'casaa_clone_settings_callback',
+		'page arguments' => array(4),
+		'access arguments' => array('administer casaa module'),
+		'file' => 'casaa.move.inc',
+	);
+	$items['admin/build/casaa/mappings/%ctools_js/search'] = array(
+		'page callback' => 'casaa_search_settings_callback',
+		'page arguments' => array(4),
+		'access arguments' => array('administer casaa module'),
+		'file' => 'casaa.search.inc',
+	);
 	
 	
 	// AHAH callbacks
@@ -285,10 +309,10 @@ function casaa_status_form() {
 	}
 
 	if ($plugins[$active]['status'] == 1) {
-		$title = 'Disable';
+		$title = 'Enabled';
 	}
 	else {
-		$title = 'Enable';
+		$title = 'Disabled';
 	}
 	
 	$form['plugin_status_check'] = array(
@@ -336,10 +360,10 @@ function casaa_set_status_js() {
 	}
 	
 	if ($status == 1) {
-		$title = 'Disable';
+		$title = 'Enabled';
 	}
 	else {
-		$title = 'Enable';
+		$title = 'Disabled';
 	}
 	
 	_casaa_set_status($active, $status);
